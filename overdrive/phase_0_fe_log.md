@@ -426,3 +426,42 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-17 22:31 GMT - Typed runs API layer, SSE progress hook, and stage metadata
+
+### Summary of files added/changed
+- Added `frontend/src/lib/api/runs.types.ts` with typed run models (`RunSummaryResponse`, `StageCheckpointResponse`, `RunStatusResponse`), `CancelRunResponse`, and discriminated `SSEEvent` union keyed by `event_type`.
+- Added `frontend/src/lib/api/runs.ts` with run endpoints:
+  - `startRun` (`POST /api/v1/versions/{version_id}/runs/start`)
+  - `getRunStatus` (`GET /api/v1/runs/{run_id}/status`)
+  - `cancelRun` (`POST /api/v1/runs/{run_id}/cancel`)
+  - `retryRun` (`POST /api/v1/runs/{run_id}/retry`)
+  - `createRunProgressEventSource` (`GET /api/v1/runs/{run_id}/progress/stream`)
+  - plus `parseSseEventData` runtime parser for typed SSE events.
+- Added `frontend/src/features/runs/useRunProgress.ts` with:
+  - SSE connection lifecycle
+  - reconnect backoff (1s, 2s, 4s; capped at 10s)
+  - fallback polling every 5s after 3 reconnect failures
+  - terminal-state shutdown (`complete` / `failed`)
+  - cleanup for EventSource/timers on unmount, disable, and run switch.
+- Added `frontend/src/features/runs/stageMetadata.ts` with 12-stage metadata, phase groupings (0-1, 2-8, 9-11), and gate definitions after stages 1 and 8.
+- Updated API barrel exports in `frontend/src/lib/api/index.ts` to include runs functions/types.
+
+### SSE contract confirmation and implementation notes
+- Backend inspected directly in `Naming_BE`:
+  - `api/v1/runs.py` emits SSE lines as `event: {event_type}` and `data: {payload_json}`.
+  - Route sends `snapshot` as full `RunStatusResponse` payload.
+  - Non-snapshot events forward `event.data` from orchestrator (e.g. `{ run_id, stage_id, progress_pct }`) without an envelope.
+- Observed behavior: the backend does **not** currently include `timestamp` in the SSE `data:` payload emitted to clients, even though backend internal bus events include a timestamp field.
+- Frontend handling:
+  - parser matches emitted payload shapes exactly per event type.
+  - `SSEEvent.timestamp` in frontend typings is normalized to client receive time (`new Date().toISOString()`) to keep a consistent event object for consumers.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
+### Commit/push
+- Commit created on `main` and pushed to `origin/main`:
+  - `feat(frontend): add typed run api + sse hook with polling fallback`
