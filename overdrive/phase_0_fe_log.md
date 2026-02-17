@@ -84,3 +84,30 @@
 - `cd frontend && npm run dev -- --host 127.0.0.1 --port 4173` (server started successfully)
 - Forced 404/500 toast verification was not executed in this node because there are no feature query/mutation callsites yet.
 
+## 2026-02-17 - Phase 1 shell, breadcrumb, and placeholder phase routing
+
+### Summary of changes
+- Updated the root app shell to a fixed top navigation bar (`h-14`), with a dedicated scrollable main content region and centered content container (`max-w-[1200px]`).
+- Added a reusable breadcrumb component and integrated it into Project Detail with a client-side Dashboard link back to `/projects`.
+- Updated route inventory placeholders to pass explicit phase numbers and render `Coming in Phase X` copy per route.
+- Updated Dashboard and Project Detail stub copy to align with Phase 1 naming.
+
+### Touched files
+- `frontend/src/app/App.tsx`
+- `frontend/src/app/router.tsx`
+- `frontend/src/components/app/Breadcrumbs.tsx`
+- `frontend/src/routes/ProjectsPage.tsx`
+- `frontend/src/routes/ProjectDetailPage.tsx`
+- `frontend/src/routes/VersionPlaceholderPage.tsx`
+
+### Manual verification steps performed
+- `cd frontend && npm run format`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run typecheck`
+- `cd frontend && npm run build`
+- Attempted local runtime verification with `cd frontend && npm run dev -- --host 127.0.0.1 --port 4173` and deep-link URL checks (`/projects`, `/projects/123`, `/projects/123/versions/1/results`).
+- In this execution environment, dev server bind failed with `listen EPERM`, so browser-level click/back-forward verification could not be completed here.
+
+### Follow-ups / known limitations
+- Browser/manual navigation verification (breadcrumb click and back/forward behavior) should be run locally outside this sandbox due the observed port bind restriction.
+
