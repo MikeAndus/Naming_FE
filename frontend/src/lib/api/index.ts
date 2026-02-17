@@ -10,3 +10,14 @@ export {
   type ListProjectsResponse,
   type Project,
 } from '@/lib/api/projects'
+export {
+  createBlankVersion,
+  forkVersion,
+  getVersionById,
+  listProjectVersions,
+  patchVersion,
+  type ListProjectVersionsResponse,
+  type PatchVersionPayload,
+  type ProjectVersionListItem,
+  type VersionDetail,
+} from '@/lib/api/versions'

@@ -282,3 +282,58 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-17 17:53 GMT - Versions API single-source layer + TanStack Query cache hooks
+
+### Files added/modified
+- Added `frontend/src/lib/api/versions.ts`
+- Added `frontend/src/features/versions/queries.ts`
+- Updated `frontend/src/lib/api/index.ts` (barrel re-exports)
+
+### API functions exported
+- `listProjectVersions(projectId)` -> `GET /api/v1/projects/{project_id}/versions`
+- `createBlankVersion(projectId)` -> `POST /api/v1/projects/{project_id}/versions`
+- `getVersionById(versionId)` -> `GET /api/v1/versions/{version_id}`
+- `patchVersion(versionId, payload)` -> `PATCH /api/v1/versions/{version_id}`
+- `forkVersion(versionId)` -> `POST /api/v1/versions/{version_id}/fork`
+
+### API typing + error behavior
+- Added typed API models:
+  - `ProjectVersionListItem` (list row contract)
+  - `VersionDetail` (full detail contract)
+  - `PatchVersionPayload` (`brief?`, `hotspots?`, `dials?` only)
+- All IDs remain `string` (UUID) and timestamps remain `string` (ISO 8601).
+- API requests use existing shared `request(...)` wrapper and preserve existing `ApiError` behavior:
+  - non-2xx throws typed `ApiError` with `status` and parsed `body`
+  - backend `detail` payloads, including structured 422 validation detail, are not swallowed or remapped away.
+
+### Query hooks/mutations exported
+- Query keys:
+  - `projectVersionsQueryKey(projectId)`
+  - `versionDetailQueryKey(versionId)`
+- Query hooks:
+  - `useProjectVersions(projectId: string | undefined)` (disabled when id is undefined; sorted newest-first by `version_number DESC` via copied array sort)
+  - `useVersion(versionId: string | undefined)` (disabled when id is undefined)
+- Mutation hooks:
+  - `useCreateBlankVersionMutation()`
+  - `usePatchVersionMutation()`
+  - `useForkVersionMutation()`
+
+### Cache update/invalidation strategy
+- `create`/`fork` on success:
+  - seed version detail cache (`versionDetailQueryKey(newVersion.id)`)
+  - upsert target project list cache (`projectVersionsQueryKey(projectId)`)
+  - invalidate that exact project list key to reconcile server-derived fields (like snippet/timestamps) without broad invalidation
+- `patch`:
+  - optimistic update of version detail cache for provided section fields only (`brief`/`hotspots`/`dials`) with rollback snapshot on error
+  - on success, replace detail cache with server response
+  - update matching row metadata in project list cache and invalidate exact project list key for canonical reconciliation
+
+### Notes / follow-ups
+- Mutation hooks intentionally do not catch/transform errors; callers can inspect `status === 409` and `status === 422` from the propagated `ApiError`.
+- List `summary_snippet` after patch is reconciled via targeted list invalidation because snippet derivation is server-owned.
+
+### Verification run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
