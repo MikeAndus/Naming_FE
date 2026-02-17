@@ -526,3 +526,41 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-17 23:02 GMT - Version Builder Start Run interaction + active-run gating
+
+### Summary of changes
+- Added run query/mutation helpers in `frontend/src/features/runs/queries.ts`:
+  - `useRunStatusQuery(runId)` using `GET /api/v1/runs/{run_id}/status` with 5s polling while non-terminal.
+  - `useStartRunMutation()` using `POST /api/v1/versions/{id}/runs/start`.
+  - `runStatusQueryKey(...)` + terminal-state helper.
+- Updated `frontend/src/routes/VersionBuilderPage.tsx` Start Run behavior:
+  - Computes `isStartRunReady` from existing builder validators (`validateBrief`, `validateHotspots`, `validateDials`) plus explicit minimums (`hotspots >= 2`, `differentiators >= 3`).
+  - Detects active run via `version.latest_run_id` + `useRunStatusQuery`; treats non-terminal run states as active.
+  - Start Run button enabled only when:
+    - `version.state === 'draft'`
+    - brief completeness check passes
+    - no active run
+    - not already saving / starting
+  - While active run exists, Start Run is disabled with label `Running...` and a `View Run Monitor` link is shown.
+- Start Run click flow now:
+  - Flushes current dirty autosave state first via existing `saveDirtySections(..., 'manual')`.
+  - Calls start-run endpoint (no request body by default).
+  - On success (201) navigates to `/projects/:projectId/versions/:versionId/run`.
+  - On 422 shows exact toast: `Cannot start run: brief is incomplete`.
+  - On 409 shows conflict toast (backend detail when available).
+- Query invalidation after successful start-run:
+  - Version detail query
+  - Project detail query
+  - Project versions list query
+  - Run status cache key(s) for latest/new run ids
+
+### Files changed
+- `frontend/src/features/runs/queries.ts`
+- `frontend/src/routes/VersionBuilderPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

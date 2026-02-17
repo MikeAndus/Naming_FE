@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { Slider } from '@/components/ui/slider'
 import { Textarea } from '@/components/ui/textarea'
 import { ToastAction } from '@/components/ui/toast'
 import { useProjectDetailQuery } from '@/features/projects/queries'
+import { isTerminalRunState, useRunStatusQuery, useStartRunMutation } from '@/features/runs/queries'
 import { usePatchVersionMutation, useVersionDetailQuery } from '@/features/versions/queries'
 import {
   getErrorMessage,
@@ -373,6 +374,28 @@ function validateDials(dials: DialsState): ValidationResult {
   return { fieldErrors }
 }
 
+function isBriefCompleteForStartRun(
+  brief: BriefState,
+  hotspots: HotspotState[],
+  dials: DialsState,
+): boolean {
+  const briefValidation = validateBrief(brief)
+  const hotspotsValidation = validateHotspots(hotspots)
+  const dialsValidation = validateDials(dials)
+
+  const differentiatorsCount = brief.differentiators.filter((item) => item.trim()).length
+
+  return (
+    !briefValidation.sectionError &&
+    Object.keys(briefValidation.fieldErrors).length === 0 &&
+    !hotspotsValidation.sectionError &&
+    Object.keys(hotspotsValidation.fieldErrors).length === 0 &&
+    Object.keys(dialsValidation.fieldErrors).length === 0 &&
+    hotspots.length >= 2 &&
+    differentiatorsCount >= 3
+  )
+}
+
 function parse422ValidationErrors(error: unknown): ValidationResult & { section: SectionKey | null } {
   if (!isApiError(error) || error.status !== 422) {
     return { fieldErrors: {}, section: null }
@@ -467,10 +490,12 @@ function BuilderSkeleton() {
 }
 
 export function VersionBuilderPage() {
+  const navigate = useNavigate()
   const { projectId, versionId } = useParams()
   const versionQuery = useVersionDetailQuery(versionId)
   const projectQuery = useProjectDetailQuery(projectId)
   const patchMutation = usePatchVersionMutation()
+  const startRunMutation = useStartRunMutation()
 
   const [brief, setBrief] = useState<BriefState | null>(null)
   const [hotspots, setHotspots] = useState<HotspotState[]>([])
@@ -516,8 +541,13 @@ export function VersionBuilderPage() {
   }, [isSaving])
 
   const version = versionQuery.data
+  const latestRunId = version?.latest_run_id ?? null
+  const runStatusQuery = useRunStatusQuery(latestRunId ?? undefined)
   const isDraft = version?.state === 'draft'
   const canEdit = Boolean(versionId && version && isDraft && !forcedReadOnly)
+  const isRunActive =
+    Boolean(latestRunId) &&
+    (runStatusQuery.data ? !isTerminalRunState(runStatusQuery.data.state) : true)
 
   useEffect(() => {
     canEditRef.current = canEdit
@@ -552,6 +582,13 @@ export function VersionBuilderPage() {
   const breadcrumbProjectLabel =
     projectQuery.data?.name || (projectId ? `Project ${projectId}` : 'Project')
   const versionLabel = version ? `v${version.version_number}` : 'Version'
+  const isStartRunReady = useMemo(() => {
+    if (!brief || !dials) {
+      return false
+    }
+
+    return isBriefCompleteForStartRun(brief, hotspots, dials)
+  }, [brief, dials, hotspots])
 
   const getFieldError = useCallback(
     (path: string) => serverFieldErrors[path] ?? clientFieldErrors[path],
@@ -766,6 +803,72 @@ export function VersionBuilderPage() {
     saveDirtySectionsRef.current = saveDirtySections
   }, [saveDirtySections])
 
+  const canStartRun = Boolean(
+    projectId &&
+      versionId &&
+      version &&
+      version.state === 'draft' &&
+      isStartRunReady &&
+      !isRunActive &&
+      !startRunMutation.isPending &&
+      !isSaving,
+  )
+
+  const handleStartRun = useCallback(async () => {
+    if (!projectId || !versionId || !version || !canStartRun) {
+      return
+    }
+
+    const saveResult = await saveDirtySections(undefined, 'manual')
+    if (saveResult.hadFailure) {
+      return
+    }
+
+    try {
+      await startRunMutation.mutateAsync({
+        projectId,
+        versionId,
+        previousLatestRunId: latestRunId,
+      })
+
+      navigate(`/projects/${projectId}/versions/${versionId}/run`)
+    } catch (error) {
+      if (isApiError(error) && error.status === 422) {
+        toast({
+          variant: 'destructive',
+          title: 'Cannot start run: brief is incomplete',
+        })
+        return
+      }
+
+      if (isApiError(error) && error.status === 409) {
+        const detail = getErrorMessage(error, '').trim()
+        toast({
+          variant: 'destructive',
+          title: detail
+            ? `Cannot start run: ${detail}`
+            : 'Cannot start run: a run is already in progress',
+        })
+        return
+      }
+
+      toast({
+        variant: 'destructive',
+        title: 'Failed to start run',
+        description: getErrorMessage(error, 'Please try again.'),
+      })
+    }
+  }, [
+    canStartRun,
+    latestRunId,
+    navigate,
+    projectId,
+    saveDirtySections,
+    startRunMutation,
+    version,
+    versionId,
+  ])
+
   useEffect(() => {
     if (!canEdit || !hasDirty || !lastEditAt) {
       return
@@ -964,9 +1067,14 @@ export function VersionBuilderPage() {
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </Button>
-              <Button disabled type="button" variant="outline">
-                Start Run
+              <Button disabled={!canStartRun} onClick={() => void handleStartRun()} type="button" variant="outline">
+                {isRunActive ? 'Running...' : startRunMutation.isPending ? 'Starting...' : 'Start Run'}
               </Button>
+              {isRunActive ? (
+                <Button asChild type="button" variant="link">
+                  <Link to={`/projects/${projectId}/versions/${versionId}/run`}>View Run Monitor</Link>
+                </Button>
+              ) : null}
             </div>
           </CardContent>
         </Card>
