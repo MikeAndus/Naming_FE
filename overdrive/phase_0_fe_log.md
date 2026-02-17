@@ -138,3 +138,39 @@
 - Confirm navigation to `/projects/:id`: implemented via row `<Link>`; browser click verification pending locally.
 - Confirm error toast + retry by stopping/restarting backend: pending backend availability locally.
 
+## 2026-02-17 14:27 GMT - Create Project modal with optimistic list insertion
+
+### Summary
+- Replaced placeholder create dialog with full form UX (Name required, Description optional) using shadcn/Radix Dialog.
+- Added client-side validation mirroring backend limits (`name` trimmed, required, <=200; `description` <=1000).
+- Added `POST /api/v1/projects` API function and wired create mutation.
+- Implemented optimistic insertion into the projects list cache and reconciliation with the server-returned project.
+- Added rollback + toast error handling on mutation failure while preserving form input for retry.
+
+### Files changed
+- `frontend/src/components/projects/CreateProjectDialog.tsx`
+- `frontend/src/features/projects/queries.ts`
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/lib/api/projects.ts`
+
+### Optimistic update / reconciliation details
+- Query key used: `defaultProjectsListQueryKey` (`['projects','list',{ limit: 100, offset: 0 }]`).
+- On mutate: cancel in-flight list query, snapshot previous list, insert optimistic project at top with temporary id (`crypto.randomUUID()` fallback `optimistic-<timestamp>`) and `updated_at` set to now.
+- On success: replace optimistic item by matching temporary id and dedupe by real server id to avoid duplicates.
+- On error: restore prior snapshot (or clear synthetic cache if none existed).
+
+### Validation behavior
+- `name` is trimmed before submit and validated as non-empty and <= 200 chars.
+- `description` validated as <= 1000 chars.
+- Save button is disabled when invalid or pending; inline field errors are shown.
+
+### Manual verification checklist run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+- `cd frontend && npm run format:check` (pass)
+- Happy-path API create and backend-down failure flow require backend/browser interaction and were not executable in this sandbox session.
+
+### Follow-ups / known limitations
+- Confirm end-to-end behavior against live backend: POST payload shape, optimistic row visual, reconciliation without duplicates, and failure retry UX with backend stopped/restarted.
+

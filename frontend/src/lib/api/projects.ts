@@ -24,10 +24,22 @@ export interface ListProjectsParams {
   offset?: number
 }
 
+export interface CreateProjectPayload {
+  name: string
+  description?: string | null
+}
+
 export async function listProjects(params: ListProjectsParams = {}): Promise<ListProjectsResponse> {
   const limit = params.limit ?? DEFAULT_PROJECTS_LIST_LIMIT
   const offset = params.offset ?? DEFAULT_PROJECTS_LIST_OFFSET
   const path = `/projects?limit=${limit}&offset=${offset}`
 
   return request<ListProjectsResponse>(path, { method: 'GET' })
+}
+
+export async function createProject(payload: CreateProjectPayload): Promise<Project> {
+  return request<Project, CreateProjectPayload>('/projects', {
+    method: 'POST',
+    body: payload,
+  })
 }
