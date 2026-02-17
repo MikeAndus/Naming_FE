@@ -1,10 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import type { PropsWithChildren } from 'react'
 
+import { queryClient } from '@/app/queryClient'
 import { Toaster } from '@/components/ui/toaster'
-
-const queryClient = new QueryClient()
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
