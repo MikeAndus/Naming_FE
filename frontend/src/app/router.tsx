@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { App } from '@/app/App'
 import { ProjectDetailPage } from '@/routes/ProjectDetailPage'
 import { ProjectsPage } from '@/routes/ProjectsPage'
+import { VersionBuilderPage } from '@/routes/VersionBuilderPage'
 import { VersionPlaceholderPage } from '@/routes/VersionPlaceholderPage'
 
 export const router = createBrowserRouter([
@@ -26,23 +27,23 @@ export const router = createBrowserRouter([
             element: <ProjectDetailPage />,
           },
           {
-            path: ':id/versions/:vid',
-            element: <VersionPlaceholderPage phase={2} title="Version Overview" />,
+            path: ':projectId/versions/:versionId',
+            element: <VersionBuilderPage />,
           },
           {
-            path: ':id/versions/:vid/run',
+            path: ':projectId/versions/:versionId/run',
             element: <VersionPlaceholderPage phase={3} title="Run" />,
           },
           {
-            path: ':id/versions/:vid/territory-review',
+            path: ':projectId/versions/:versionId/territory-review',
             element: <VersionPlaceholderPage phase={5} title="Territory Review" />,
           },
           {
-            path: ':id/versions/:vid/generation-review',
+            path: ':projectId/versions/:versionId/generation-review',
             element: <VersionPlaceholderPage phase={8} title="Generation Review" />,
           },
           {
-            path: ':id/versions/:vid/results',
+            path: ':projectId/versions/:versionId/results',
             element: <VersionPlaceholderPage phase={10} title="Results" />,
           },
         ],

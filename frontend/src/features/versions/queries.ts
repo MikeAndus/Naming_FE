@@ -74,6 +74,8 @@ export function useVersion(versionId: string | undefined) {
   })
 }
 
+export const useVersionDetailQuery = useVersion
+
 export interface CreateBlankVersionVariables {
   projectId: string
 }
@@ -196,6 +198,9 @@ export function usePatchVersionMutation() {
 
   return useMutation<VersionDetail, unknown, PatchVersionVariables, PatchVersionMutationContext>({
     mutationFn: ({ versionId, patch }) => patchVersion(versionId, patch),
+    meta: {
+      suppressGlobalErrorToast: true,
+    },
     onMutate: async ({ versionId, patch }) => {
       const detailQueryKey = versionDetailQueryKey(versionId)
       await queryClient.cancelQueries({

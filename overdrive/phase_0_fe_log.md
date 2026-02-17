@@ -283,6 +283,53 @@
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
 
+## 2026-02-17 20:47 GMT - Version Builder screen with section autosave and draft-only editing
+
+### What was built
+- Added `frontend/src/routes/VersionBuilderPage.tsx` and routed `/projects/:projectId/versions/:versionId` to it in `frontend/src/app/router.tsx`.
+- Replaced the base version placeholder route with the new builder while keeping downstream placeholder routes (`run`, `territory-review`, `generation-review`, `results`).
+- Updated `frontend/src/routes/VersionPlaceholderPage.tsx` to support both old and new param names for route compatibility.
+- Added builder UI:
+  - breadcrumb row (`Projects -> [Project Name] -> vN`)
+  - sticky header with version badge + Save + disabled Start Run
+  - collapsible Brief / Creative Hotspots / Naming Dials sections (expanded by default)
+  - desktop-only builder (mobile shows `Best viewed on desktop.`)
+  - loading skeleton blocks for 3 sections
+
+### Autosave + save strategy
+- Added debounced autosave at 1.5s idle after edits.
+- Added section-level blur save via `onBlurCapture` when focus leaves a section.
+- Added explicit Save button that saves all dirty sections sequentially.
+- Added best-effort unmount flush and `beforeunload` native confirmation when dirty.
+
+### Section-only PATCH enforcement
+- Every save call sends exactly one top-level key per PATCH:
+  - `{ brief: ... }` OR `{ hotspots: ... }` OR `{ dials: ... }`
+- Multi-section saves are executed sequentially as separate PATCH requests.
+
+### Error handling behavior
+- 409 conflict on save:
+  - destructive toast shown
+  - builder switches to read-only mode immediately (inputs/autosave/save disabled)
+- 422 validation:
+  - parses FastAPI-style `detail` arrays when present
+  - maps to field-level keys where possible and section-level errors otherwise
+  - keeps retryable save toast behavior
+
+### Query/mutation updates used by builder
+- `frontend/src/features/versions/queries.ts`:
+  - added alias export `useVersionDetailQuery`
+  - `usePatchVersionMutation` now suppresses global error toasts so builder can own inline + retry UX
+
+### Notes / follow-ups
+- Reordering for differentiators and hotspots is implemented via keyboard-focusable `Up`/`Down` buttons only (no drag-and-drop).
+- Inline 422 mapping is best-effort based on backend `loc` paths; unknown paths fall back to section-level messaging.
+
+### Verification run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
 ## 2026-02-17 20:36 GMT - Project Detail versions region with create/edit/fork actions
 
 ### What was built
