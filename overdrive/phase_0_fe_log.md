@@ -564,3 +564,38 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-17 23:08 GMT - Reactive Project Detail version badges (invalidation + conditional polling)
+
+### Summary of changes
+- Added conditional polling support in `useProjectVersionsQuery(projectId)` (`frontend/src/features/versions/queries.ts`):
+  - Introduced `isActiveVersionState(state)` helper for active states:
+    - `phase_1_running`, `territory_review`, `phase_2_running`, `generation_review`, `phase_3_running`
+  - `refetchInterval` now polls every 5s only when any returned version is in an active state.
+  - Polling stops (`false`) when all versions are terminal (`draft`, `complete`, `failed`) or list is empty.
+- Added versions-list invalidation on run mutations in `frontend/src/features/runs/queries.ts`:
+  - Added shared `projectVersionsQueryKeyPrefix` usage for broader invalidation when project id is unknown.
+  - `useStartRunMutation` continues invalidating the exact project versions list.
+  - Added `useCancelRunMutation` and `useRetryRunMutation` hooks that invalidate project versions list + related detail/status keys on success.
+- Updated Run Monitor to use shared run mutation hooks (`frontend/src/routes/RunMonitorPage.tsx`) so cancel/retry now participate in centralized versions-list invalidation behavior.
+- Updated Project Detail version state badge mapping (`frontend/src/features/versions/components/ProjectVersionsSection.tsx`) with explicit labels/variants for:
+  - `draft`
+  - `phase_1_running`
+  - `territory_review`
+  - `phase_2_running`
+  - `generation_review`
+  - `phase_3_running`
+  - `complete`
+  - `failed`
+
+### Files modified
+- `frontend/src/features/versions/queries.ts`
+- `frontend/src/features/runs/queries.ts`
+- `frontend/src/features/versions/components/ProjectVersionsSection.tsx`
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

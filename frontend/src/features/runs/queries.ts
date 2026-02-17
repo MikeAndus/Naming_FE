@@ -1,8 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { projectDetailQueryKey } from '@/features/projects/queries'
-import { projectVersionsQueryKey, versionDetailQueryKey } from '@/features/versions/queries'
-import { getRunStatus, startRun, type RunState, type RunStatusResponse, type RunSummaryResponse } from '@/lib/api'
+import {
+  projectVersionsQueryKey,
+  projectVersionsQueryKeyPrefix,
+  versionDetailQueryKey,
+} from '@/features/versions/queries'
+import {
+  cancelRun,
+  getRunStatus,
+  retryRun,
+  startRun,
+  type RunState,
+  type RunStatusResponse,
+  type RunSummaryResponse,
+} from '@/lib/api'
 
 export const runStatusQueryKey = (runId: string) => ['runs', 'status', runId] as const
 
@@ -35,6 +47,23 @@ export interface StartRunVariables {
   previousLatestRunId?: string | null
 }
 
+function invalidateProjectVersionsList(
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId?: string,
+): void {
+  if (projectId) {
+    void queryClient.invalidateQueries({
+      queryKey: projectVersionsQueryKey(projectId),
+      exact: true,
+    })
+    return
+  }
+
+  void queryClient.invalidateQueries({
+    queryKey: projectVersionsQueryKeyPrefix,
+  })
+}
+
 export function useStartRunMutation() {
   const queryClient = useQueryClient()
 
@@ -63,10 +92,77 @@ export function useStartRunMutation() {
         queryKey: projectDetailQueryKey(variables.projectId),
         exact: true,
       })
+      invalidateProjectVersionsList(queryClient, variables.projectId)
+    },
+  })
+}
+
+export interface CancelRunVariables {
+  runId: string
+  projectId?: string
+  versionId?: string
+}
+
+export function useCancelRunMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ runId }: CancelRunVariables) => cancelRun(runId),
+    meta: {
+      suppressGlobalErrorToast: true,
+    },
+    onSuccess: (_response, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: projectVersionsQueryKey(variables.projectId),
+        queryKey: runStatusQueryKey(variables.runId),
         exact: true,
       })
+      if (variables.versionId) {
+        void queryClient.invalidateQueries({
+          queryKey: versionDetailQueryKey(variables.versionId),
+          exact: true,
+        })
+      }
+      if (variables.projectId) {
+        void queryClient.invalidateQueries({
+          queryKey: projectDetailQueryKey(variables.projectId),
+          exact: true,
+        })
+      }
+      invalidateProjectVersionsList(queryClient, variables.projectId)
+    },
+  })
+}
+
+export interface RetryRunVariables {
+  runId: string
+  projectId?: string
+  versionId?: string
+}
+
+export function useRetryRunMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ runId }: RetryRunVariables) => retryRun(runId),
+    meta: {
+      suppressGlobalErrorToast: true,
+    },
+    onSuccess: (runStatus, variables) => {
+      queryClient.setQueryData(runStatusQueryKey(runStatus.id), runStatus)
+
+      if (variables.versionId) {
+        void queryClient.invalidateQueries({
+          queryKey: versionDetailQueryKey(variables.versionId),
+          exact: true,
+        })
+      }
+      if (variables.projectId) {
+        void queryClient.invalidateQueries({
+          queryKey: projectDetailQueryKey(variables.projectId),
+          exact: true,
+        })
+      }
+      invalidateProjectVersionsList(queryClient, variables.projectId)
     },
   })
 }

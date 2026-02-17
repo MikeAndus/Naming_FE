@@ -34,10 +34,31 @@ function getSummarySnippet(summarySnippet: string | null): string {
 
 function VersionStateBadge({ state }: { state: string }) {
   if (state === 'draft') {
-    return <Badge>Draft</Badge>
+    return <Badge variant="secondary">Draft</Badge>
+  }
+  if (state === 'phase_1_running') {
+    return <Badge variant="outline">Phase 1 Running</Badge>
+  }
+  if (state === 'territory_review') {
+    return <Badge variant="outline">Territory Review</Badge>
+  }
+  if (state === 'phase_2_running') {
+    return <Badge variant="outline">Phase 2 Running</Badge>
+  }
+  if (state === 'generation_review') {
+    return <Badge variant="outline">Generation Review</Badge>
+  }
+  if (state === 'phase_3_running') {
+    return <Badge variant="outline">Phase 3 Running</Badge>
+  }
+  if (state === 'complete') {
+    return <Badge>Complete</Badge>
+  }
+  if (state === 'failed') {
+    return <Badge variant="destructive">Failed</Badge>
   }
 
-  return <Badge variant="outline">{state}</Badge>
+  return <Badge variant="outline">{state.replaceAll('_', ' ')}</Badge>
 }
 
 function VersionRowActions({

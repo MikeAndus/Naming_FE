@@ -11,11 +11,25 @@ import {
   type VersionDetail,
 } from '@/lib/api'
 
+const ACTIVE_VERSION_STATES = new Set([
+  'phase_1_running',
+  'territory_review',
+  'phase_2_running',
+  'generation_review',
+  'phase_3_running',
+])
+
 export const projectVersionsQueryKey = (projectId: string) =>
   ['versions', 'project', projectId] as const
 
+export const projectVersionsQueryKeyPrefix = ['versions', 'project'] as const
+
 export const versionDetailQueryKey = (versionId: string) =>
   ['versions', 'detail', versionId] as const
+
+export function isActiveVersionState(state: string): boolean {
+  return ACTIVE_VERSION_STATES.has(state)
+}
 
 function toProjectVersionListItem(version: VersionDetail): ProjectVersionListItem {
   return {
@@ -61,6 +75,14 @@ export function useProjectVersionsQuery(projectId: string | undefined) {
       : ['versions', 'project', 'missing-id'],
     queryFn: () => listProjectVersions(projectId as string),
     enabled: Boolean(projectId),
+    refetchInterval: (query) => {
+      const versions = query.state.data as ProjectVersionListItem[] | undefined
+      if (!versions || versions.length === 0) {
+        return false
+      }
+
+      return versions.some((version) => isActiveVersionState(version.state)) ? 5000 : false
+    },
   })
 }
 

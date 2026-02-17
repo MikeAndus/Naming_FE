@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, Circle, CircleX, Loader2 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -17,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { useProjectDetailQuery } from '@/features/projects/queries'
+import { useCancelRunMutation, useRetryRunMutation } from '@/features/runs/queries'
 import {
   GATE_DEFINITIONS,
   PHASE_HEADERS,
@@ -25,7 +25,7 @@ import {
 } from '@/features/runs/stageMetadata'
 import { useRunProgress } from '@/features/runs/useRunProgress'
 import { useVersionDetailQuery } from '@/features/versions/queries'
-import { cancelRun, getErrorMessage, retryRun, type RunState, type StageCheckpointResponse } from '@/lib/api'
+import { getErrorMessage, type RunState, type StageCheckpointResponse } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 
 const ACTIVE_RUN_STATES: RunState[] = [
@@ -407,46 +407,8 @@ export function RunMonitorPage() {
     enabled: isDesktop && Boolean(latestRunId),
   })
 
-  const cancelMutation = useMutation({
-    mutationFn: (runId: string) => cancelRun(runId),
-    meta: {
-      suppressGlobalErrorToast: true,
-    },
-    onError: (error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to cancel run',
-        description: getErrorMessage(error, 'Please try again.'),
-      })
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Cancel requested',
-        description: 'The run is being cancelled.',
-      })
-    },
-  })
-
-  const retryMutation = useMutation({
-    mutationFn: (runId: string) => retryRun(runId),
-    meta: {
-      suppressGlobalErrorToast: true,
-    },
-    onError: (error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to retry run',
-        description: getErrorMessage(error, 'Please try again.'),
-      })
-    },
-    onSuccess: (retriedRun) => {
-      startRunProgress()
-      toast({
-        title: 'Retry started',
-        description: `Resumed run ${retriedRun.id}.`,
-      })
-    },
-  })
+  const cancelMutation = useCancelRunMutation()
+  const retryMutation = useRetryRunMutation()
 
   useEffect(() => {
     if (!runStatus?.started_at || isTerminalRunState(runStatus.state)) {
@@ -763,19 +725,61 @@ export function RunMonitorPage() {
             return
           }
 
-          cancelMutation.mutate(latestRunId, {
+          cancelMutation.mutate(
+            {
+              runId: latestRunId,
+              projectId,
+              versionId,
+            },
+            {
+            onError: (error) => {
+              toast({
+                variant: 'destructive',
+                title: 'Failed to cancel run',
+                description: getErrorMessage(error, 'Please try again.'),
+              })
+            },
+            onSuccess: () => {
+              toast({
+                title: 'Cancel requested',
+                description: 'The run is being cancelled.',
+              })
+            },
             onSettled: () => {
               setCancelDialogOpen(false)
               startRunProgress()
             },
-          })
+            },
+          )
         }}
         onCancelDialogOpenChange={setCancelDialogOpen}
         onRetry={() => {
           if (!latestRunId) {
             return
           }
-          retryMutation.mutate(latestRunId)
+          retryMutation.mutate(
+            {
+              runId: latestRunId,
+              projectId,
+              versionId,
+            },
+            {
+              onError: (error) => {
+                toast({
+                  variant: 'destructive',
+                  title: 'Failed to retry run',
+                  description: getErrorMessage(error, 'Please try again.'),
+                })
+              },
+              onSuccess: (retriedRun) => {
+                startRunProgress()
+                toast({
+                  title: 'Retry started',
+                  description: `Resumed run ${retriedRun.id}.`,
+                })
+              },
+            },
+          )
         }}
         retryLabel={
           retryMutation.isPending
