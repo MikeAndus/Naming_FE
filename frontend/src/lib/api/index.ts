@@ -4,6 +4,7 @@ export {
   createProject,
   DEFAULT_PROJECTS_LIST_LIMIT,
   DEFAULT_PROJECTS_LIST_OFFSET,
+  getProjectById,
   listProjects,
   type CreateProjectPayload,
   type ListProjectsResponse,

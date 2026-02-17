@@ -174,3 +174,29 @@
 ### Follow-ups / known limitations
 - Confirm end-to-end behavior against live backend: POST payload shape, optimistic row visual, reconciliation without duplicates, and failure retry UX with backend stopped/restarted.
 
+## 2026-02-17 14:50 GMT - Project detail page with backend fetch and versions placeholder
+
+### Files changed
+- `frontend/src/lib/api/projects.ts`
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/features/projects/queries.ts`
+- `frontend/src/routes/ProjectDetailPage.tsx`
+
+### Implemented
+- Added project detail API helper `getProjectById` for `GET /api/v1/projects/:id`.
+- Added project detail query key/hook (`['projects','detail',id]`) with `enabled: Boolean(id)` and local error-toast control via query `meta`.
+- Replaced placeholder detail route with loading, success, 404, and retryable non-404 error states.
+- Added canonical header rendering (name + optional description only when present).
+- Added Versions phase-1 placeholder region with `No versions yet` and disabled `Create Version` control using `title="Coming in Phase 2"` + helper text.
+- Kept breadcrumb navigation back to `/projects` (client-side link).
+
+### Manual verification
+- `cd frontend && npm run format`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run typecheck`
+- `cd frontend && npm run build`
+- Route-level runtime checks for live backend responses (`/projects/:id`, 404, and non-404 error + retry) were not fully executable in this sandbox session because backend endpoints are not available here.
+
+### Deviation notes
+- Tooltip requirement implemented with the minimal supported approach (`title` attribute + inline helper text) because no tooltip component exists in this frontend codebase.
+

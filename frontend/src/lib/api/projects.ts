@@ -43,3 +43,9 @@ export async function createProject(payload: CreateProjectPayload): Promise<Proj
     body: payload,
   })
 }
+
+export async function getProjectById(projectId: string): Promise<Project> {
+  return request<Project>(`/projects/${encodeURIComponent(projectId)}`, {
+    method: 'GET',
+  })
+}
