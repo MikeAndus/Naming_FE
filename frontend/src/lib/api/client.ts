@@ -1,4 +1,4 @@
-import { ApiError, parseApiErrorDetail } from '@/lib/api/errors'
+import { ApiError } from '@/lib/api/errors'
 
 const API_PREFIX = '/api/v1'
 
@@ -59,33 +59,52 @@ function buildRequestUrl(path: string): string {
 
 async function parseResponsePayload(response: Response): Promise<unknown> {
   if (response.status === 204 || response.status === 205) {
-    return undefined
+    return null
   }
 
   const text = await response.text()
   if (!text) {
-    return undefined
+    return null
   }
 
-  const contentType = response.headers.get('content-type') ?? ''
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
   if (contentType.includes('application/json')) {
     try {
       return JSON.parse(text) as unknown
     } catch {
-      return undefined
+      return text
     }
   }
 
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return text
-  }
+  return text
 }
 
 export interface RequestOptions<TBody> extends Omit<RequestInit, 'body' | 'headers'> {
   body?: TBody
   headers?: HeadersInit
+}
+
+function isJsonBody(body: unknown): boolean {
+  if (
+    body === null ||
+    typeof body === 'number' ||
+    typeof body === 'boolean' ||
+    Array.isArray(body)
+  ) {
+    return true
+  }
+
+  if (typeof body !== 'object') {
+    return false
+  }
+
+  return (
+    !(body instanceof FormData) &&
+    !(body instanceof URLSearchParams) &&
+    !(body instanceof Blob) &&
+    !(body instanceof ArrayBuffer) &&
+    !ArrayBuffer.isView(body)
+  )
 }
 
 export async function request<TResponse, TBody = undefined>(
@@ -98,23 +117,25 @@ export async function request<TResponse, TBody = undefined>(
   if (!requestHeaders.has('Accept')) {
     requestHeaders.set('Accept', 'application/json')
   }
-  if (body !== undefined && !requestHeaders.has('Content-Type')) {
+  if (body !== undefined && isJsonBody(body) && !requestHeaders.has('Content-Type')) {
     requestHeaders.set('Content-Type', 'application/json')
+  }
+
+  let requestBody: BodyInit | undefined
+  if (body !== undefined) {
+    requestBody = isJsonBody(body) ? JSON.stringify(body) : (body as BodyInit)
   }
 
   const response = await fetch(buildRequestUrl(path), {
     ...restOptions,
     headers: requestHeaders,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: requestBody,
   })
 
   const payload = await parseResponsePayload(response)
 
   if (!response.ok) {
-    const fallbackDetail = response.statusText || `Request failed with status ${response.status}`
-    const detail = parseApiErrorDetail(payload) ?? fallbackDetail
-
-    throw new ApiError(response.status, detail, payload)
+    throw new ApiError(response.status, payload)
   }
 
   return payload as TResponse

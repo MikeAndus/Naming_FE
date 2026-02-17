@@ -3,6 +3,7 @@ import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 import { getErrorMessage, isApiError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 
+const DEFAULT_ERROR_TITLE = 'Something went wrong'
 const DEFAULT_ERROR_MESSAGE = 'Something went wrong'
 
 type ErrorMeta = {
@@ -20,7 +21,7 @@ function shouldToast(meta: unknown): boolean {
 function notifyError(error: unknown) {
   toast({
     variant: 'destructive',
-    title: 'Error',
+    title: DEFAULT_ERROR_TITLE,
     description: getErrorMessage(error, DEFAULT_ERROR_MESSAGE),
   })
 }

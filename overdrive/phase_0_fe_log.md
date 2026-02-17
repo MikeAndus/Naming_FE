@@ -200,3 +200,43 @@
 ### Deviation notes
 - Tooltip requirement implemented with the minimal supported approach (`title` attribute + inline helper text) because no tooltip component exists in this frontend codebase.
 
+
+## 2026-02-17 15:18 GMT - FE primitives + ApiError body preservation + mutation toast baseline
+
+### Summary
+- Added missing shadcn/ui primitives required for upcoming Version Builder work: `badge`, `card`, `checkbox`, `radio-group`, and `slider` under `frontend/src/components/ui/`.
+- Added required Radix dependencies for the new primitives in `frontend/package.json` via install: `@radix-ui/react-checkbox`, `@radix-ui/react-radio-group`, `@radix-ui/react-slider`.
+- Updated shared API error handling to preserve backend payload shape exactly (including structured `detail`) on non-2xx responses.
+- Confirmed global React Query mutation error toasts are wired through `MutationCache.onError` and standardized toast copy.
+
+### Files changed
+- `frontend/src/components/ui/badge.tsx`
+- `frontend/src/components/ui/card.tsx`
+- `frontend/src/components/ui/checkbox.tsx`
+- `frontend/src/components/ui/radio-group.tsx`
+- `frontend/src/components/ui/slider.tsx`
+- `frontend/src/lib/api/errors.ts`
+- `frontend/src/lib/api/client.ts`
+- `frontend/src/app/queryClient.ts`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+
+### API behavior details
+- `ApiError` now exposes `status` and `body` in `frontend/src/lib/api/errors.ts`.
+- `frontend/src/lib/api/client.ts` `request(...)` now throws `new ApiError(response.status, body)` for non-2xx responses.
+- Error body parsing behavior:
+  - JSON responses are parsed when `content-type` indicates JSON.
+  - Non-JSON responses fall back to text.
+  - Empty responses become `null`.
+- `getErrorMessage(...)` now prefers `ApiError.body.detail` and supports both string and structured detail values with deterministic stringification.
+
+### Query toast wiring details
+- Global mutation errors are surfaced from `MutationCache.onError` in `frontend/src/app/queryClient.ts`.
+- Toast API call remains centralized via `toast({ variant: 'destructive', ... })` and now uses:
+  - title: `Something went wrong`
+  - description: `getErrorMessage(error)`
+
+### Verification
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
