@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Button } from '@/components/ui/button'
 import { useProjectDetailQuery } from '@/features/projects/queries'
+import { ProjectVersionsSection } from '@/features/versions/components/ProjectVersionsSection'
 import { getErrorMessage, isApiError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 
@@ -145,16 +146,7 @@ export function ProjectDetailPage() {
         ) : null}
       </header>
 
-      <section className="space-y-4 rounded-lg border bg-background p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Versions</h2>
-          <Button disabled title="Coming in Phase 2" type="button" variant="outline">
-            Create Version
-          </Button>
-        </div>
-        <p className="text-sm text-muted-foreground">No versions yet</p>
-        <p className="text-xs text-muted-foreground">Create Version is coming in Phase 2.</p>
-      </section>
+      <ProjectVersionsSection projectId={id} />
     </section>
   )
 }

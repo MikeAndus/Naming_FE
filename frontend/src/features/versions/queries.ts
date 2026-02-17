@@ -17,10 +17,6 @@ export const projectVersionsQueryKey = (projectId: string) =>
 export const versionDetailQueryKey = (versionId: string) =>
   ['versions', 'detail', versionId] as const
 
-function sortVersionsNewestFirst(versions: ProjectVersionListItem[]): ProjectVersionListItem[] {
-  return [...versions].sort((left, right) => right.version_number - left.version_number)
-}
-
 function toProjectVersionListItem(version: VersionDetail): ProjectVersionListItem {
   return {
     id: version.id,
@@ -32,7 +28,7 @@ function toProjectVersionListItem(version: VersionDetail): ProjectVersionListIte
   }
 }
 
-function upsertProjectVersion(
+function prependOrReplaceProjectVersion(
   current: ProjectVersionListItem[] | undefined,
   incoming: ProjectVersionListItem,
 ): ProjectVersionListItem[] {
@@ -43,19 +39,32 @@ function upsertProjectVersion(
       : incoming
 
   const withoutIncoming = (current ?? []).filter((item) => item.id !== incoming.id)
-  return sortVersionsNewestFirst([...withoutIncoming, nextItem])
+  return [nextItem, ...withoutIncoming]
 }
 
-export function useProjectVersions(projectId: string | undefined) {
+function getOptimisticVersionNumber(current: ProjectVersionListItem[] | undefined): number {
+  if (!current) {
+    return -1
+  }
+
+  const maxVersionNumber = current.reduce(
+    (max, version) => Math.max(max, version.version_number),
+    0,
+  )
+  return maxVersionNumber + 1
+}
+
+export function useProjectVersionsQuery(projectId: string | undefined) {
   return useQuery({
     queryKey: projectId
       ? projectVersionsQueryKey(projectId)
       : ['versions', 'project', 'missing-id'],
     queryFn: () => listProjectVersions(projectId as string),
     enabled: Boolean(projectId),
-    select: (versions) => sortVersionsNewestFirst(versions),
   })
 }
+
+export const useProjectVersions = useProjectVersionsQuery
 
 export function useVersion(versionId: string | undefined) {
   return useQuery({
@@ -69,19 +78,104 @@ export interface CreateBlankVersionVariables {
   projectId: string
 }
 
+interface CreateBlankVersionMutationContext {
+  optimisticId: string
+  previousVersions?: ProjectVersionListItem[]
+}
+
 export function useCreateBlankVersionMutation() {
   const queryClient = useQueryClient()
 
-  return useMutation<VersionDetail, unknown, CreateBlankVersionVariables>({
+  return useMutation<
+    VersionDetail,
+    unknown,
+    CreateBlankVersionVariables,
+    CreateBlankVersionMutationContext
+  >({
     mutationFn: ({ projectId }) => createBlankVersion(projectId),
-    onSuccess: (version) => {
+    meta: {
+      suppressGlobalErrorToast: true,
+    },
+    onMutate: async ({ projectId }) => {
+      const listQueryKey = projectVersionsQueryKey(projectId)
+      await queryClient.cancelQueries({
+        queryKey: listQueryKey,
+        exact: true,
+      })
+
+      const previousVersions = queryClient.getQueryData<ProjectVersionListItem[]>(listQueryKey)
+      const optimisticId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `optimistic-${Date.now()}`
+      const nowIso = new Date().toISOString()
+      const optimisticVersion: ProjectVersionListItem = {
+        id: optimisticId,
+        version_number: getOptimisticVersionNumber(previousVersions),
+        state: 'draft',
+        created_at: nowIso,
+        updated_at: nowIso,
+        summary_snippet: null,
+      }
+
+      queryClient.setQueryData<ProjectVersionListItem[]>(listQueryKey, (current) => {
+        const currentList = current ?? []
+        return [optimisticVersion, ...currentList]
+      })
+
+      return {
+        optimisticId,
+        previousVersions,
+      }
+    },
+    onError: (_error, { projectId }, context) => {
+      const listQueryKey = projectVersionsQueryKey(projectId)
+      if (context?.previousVersions) {
+        queryClient.setQueryData(listQueryKey, context.previousVersions)
+        return
+      }
+
+      queryClient.removeQueries({
+        queryKey: listQueryKey,
+        exact: true,
+      })
+    },
+    onSuccess: (version, { projectId }, context) => {
       queryClient.setQueryData(versionDetailQueryKey(version.id), version)
       queryClient.setQueryData<ProjectVersionListItem[]>(
         projectVersionsQueryKey(version.project_id),
-        (current) => upsertProjectVersion(current, toProjectVersionListItem(version)),
+        (current) => {
+          const incoming = toProjectVersionListItem(version)
+          if (!current) {
+            return [incoming]
+          }
+
+          const optimisticId = context?.optimisticId
+          const withoutServerDuplicate = current.filter((item) => item.id !== version.id)
+          if (!optimisticId) {
+            return prependOrReplaceProjectVersion(withoutServerDuplicate, incoming)
+          }
+
+          const optimisticIndex = withoutServerDuplicate.findIndex((item) => item.id === optimisticId)
+          if (optimisticIndex < 0) {
+            return prependOrReplaceProjectVersion(withoutServerDuplicate, incoming)
+          }
+
+          const nextVersions = [...withoutServerDuplicate]
+          nextVersions[optimisticIndex] = incoming
+          return nextVersions
+        },
       )
+      if (projectId !== version.project_id) {
+        void queryClient.invalidateQueries({
+          queryKey: projectVersionsQueryKey(projectId),
+          exact: true,
+        })
+      }
+    },
+    onSettled: (_data, _error, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: projectVersionsQueryKey(version.project_id),
+        queryKey: projectVersionsQueryKey(variables.projectId),
         exact: true,
       })
     },
@@ -164,11 +258,14 @@ export function useForkVersionMutation() {
 
   return useMutation<VersionDetail, unknown, ForkVersionVariables>({
     mutationFn: ({ versionId }) => forkVersion(versionId),
+    meta: {
+      suppressGlobalErrorToast: true,
+    },
     onSuccess: (version) => {
       queryClient.setQueryData(versionDetailQueryKey(version.id), version)
       queryClient.setQueryData<ProjectVersionListItem[]>(
         projectVersionsQueryKey(version.project_id),
-        (current) => upsertProjectVersion(current, toProjectVersionListItem(version)),
+        (current) => prependOrReplaceProjectVersion(current, toProjectVersionListItem(version)),
       )
       void queryClient.invalidateQueries({
         queryKey: projectVersionsQueryKey(version.project_id),

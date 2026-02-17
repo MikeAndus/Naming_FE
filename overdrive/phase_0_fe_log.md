@@ -283,6 +283,48 @@
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
 
+## 2026-02-17 20:36 GMT - Project Detail versions region with create/edit/fork actions
+
+### What was built
+- Replaced the Project Detail Versions placeholder with a data-backed section in `frontend/src/features/versions/components/ProjectVersionsSection.tsx`, mounted from `frontend/src/routes/ProjectDetailPage.tsx`.
+- Added empty state copy exactly: `No versions yet. Create your first version to start naming.` with `New Version` CTA.
+- Added populated versions table rows with:
+  - `v{version_number}`
+  - state badge (`Draft` for `draft`, otherwise outline badge with raw state)
+  - formatted created date (`formatDateTime`)
+  - summary snippet fallback to `Untitled`
+- Added row actions:
+  - `Edit` -> navigates to `/projects/:projectId/versions/:versionId`
+  - `Fork` -> `POST /api/v1/versions/{version_id}/fork`, success toast + navigation to new version, failure destructive toast
+
+### Endpoints used
+- `GET /api/v1/projects/{project_id}/versions`
+- `POST /api/v1/projects/{project_id}/versions`
+- `POST /api/v1/versions/{version_id}/fork`
+
+### Query keys/hooks used
+- `projectVersionsQueryKey(projectId)`
+- `versionDetailQueryKey(versionId)`
+- `useProjectVersionsQuery(projectId)`
+- `useCreateBlankVersionMutation()`
+- `useForkVersionMutation()`
+
+### Optimistic create insertion notes
+- Implemented in `frontend/src/features/versions/queries.ts`:
+  - `onMutate`: cancel list query, snapshot previous list, insert optimistic draft row at top using client id
+  - optimistic id matching in `onSuccess` replaces optimistic row with server row
+  - `onError` restores snapshot
+  - `onSettled` invalidates exact project versions list key for canonical reconciliation
+
+### Notes / limitations
+- List order in UI is rendered as returned by the API (no client sort controls).
+- Optimistic rows use a fallback label (`v-`) when version number cannot be inferred safely from cache.
+
+### Verification run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
 ## 2026-02-17 17:53 GMT - Versions API single-source layer + TanStack Query cache hooks
 
 ### Files added/modified
