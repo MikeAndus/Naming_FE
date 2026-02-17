@@ -495,3 +495,34 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-17 22:56 GMT - Run Monitor routing/navigation integration pass
+
+### Route exposure
+- Confirmed Run Monitor route is exposed at exactly:
+  - `/projects/:projectId/versions/:versionId/run`
+- Route remains registered in `frontend/src/app/router.tsx` and maps to `RunMonitorPage` without colliding with version builder or placeholder routes.
+
+### Files changed
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Navigation alignment updates
+- Standardized breadcrumb labels to existing app pattern (`Dashboard` as root breadcrumb label).
+- Ensured Run Monitor breadcrumb trail uses:
+  - `Dashboard` -> `/projects`
+  - `[Project Name]` -> `/projects/:projectId`
+  - `vN` (or fallback version label) -> `/projects/:projectId/versions/:versionId`
+  - `Run` (current page, no link)
+- Updated the bottom back-link copy to `Back to Version Builder` and confirmed destination remains `/projects/:projectId/versions/:versionId`.
+- Added minimal missing-param breadcrumb context in the missing-param error state (`Dashboard` -> `Run`) with existing fallback link to `/projects`.
+
+### Quick verification steps
+- Route path + matching order verified in `frontend/src/app/router.tsx` against existing version routes.
+- Started dev server (`cd frontend && npm run dev -- --host 127.0.0.1 --port 4173`); Vite served successfully on `http://127.0.0.1:4174/` after automatic port fallback.
+- Browser-level clicking/navigation of URLs was not executable inside this sandbox environment.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

@@ -526,6 +526,7 @@ export function RunMonitorPage() {
   if (!projectId || !versionId) {
     return (
       <section className="space-y-4">
+        <Breadcrumbs items={[{ label: 'Dashboard', to: '/projects' }, { label: 'Run' }]} />
         <h1 className="text-xl font-semibold">Run Monitor unavailable</h1>
         <p className="text-sm text-muted-foreground">
           A project and version id are required to view run progress.
@@ -542,7 +543,7 @@ export function RunMonitorPage() {
       <section className="space-y-4">
         <Breadcrumbs
           items={[
-            { label: 'Projects', to: '/projects' },
+            { label: 'Dashboard', to: '/projects' },
             { label: projectLabel, to: `/projects/${projectId}` },
             { label: versionLabel, to: `/projects/${projectId}/versions/${versionId}` },
             { label: 'Run' },
@@ -575,8 +576,9 @@ export function RunMonitorPage() {
       <section className="space-y-5">
         <Breadcrumbs
           items={[
-            { label: 'Projects', to: '/projects' },
+            { label: 'Dashboard', to: '/projects' },
             { label: projectLabel, to: `/projects/${projectId}` },
+            { label: versionLabel, to: `/projects/${projectId}/versions/${versionId}` },
             { label: 'Run' },
           ]}
         />
@@ -601,7 +603,7 @@ export function RunMonitorPage() {
         <header className="space-y-3">
           <Breadcrumbs
             items={[
-              { label: 'Projects', to: '/projects' },
+              { label: 'Dashboard', to: '/projects' },
               { label: projectLabel, to: `/projects/${projectId}` },
               { label: versionLabel, to: `/projects/${projectId}/versions/${versionId}` },
               { label: 'Run' },
@@ -649,7 +651,7 @@ export function RunMonitorPage() {
       <header className="space-y-3">
         <Breadcrumbs
           items={[
-            { label: 'Projects', to: '/projects' },
+            { label: 'Dashboard', to: '/projects' },
             { label: projectLabel, to: `/projects/${projectId}` },
             { label: versionLabel, to: `/projects/${projectId}/versions/${versionId}` },
             { label: 'Run' },
@@ -855,7 +857,7 @@ function RunActionBar({
         </div>
 
         <Button asChild type="button" variant="link">
-          <Link to={backHref}>Back</Link>
+          <Link to={backHref}>Back to Version Builder</Link>
         </Button>
       </div>
     </div>
