@@ -111,3 +111,30 @@
 ### Follow-ups / known limitations
 - Browser/manual navigation verification (breadcrumb click and back/forward behavior) should be run locally outside this sandbox due the observed port bind restriction.
 
+## 2026-02-17 14:06 GMT - Phase 1 projects dashboard list query and UX states
+
+### Summary
+- Implemented typed Projects list API wrapper and TanStack Query hook for `GET /api/v1/projects?limit=100&offset=0`.
+- Replaced `/projects` stub with loading skeletons, inline recoverable error panel + retry, empty state CTA, and populated clickable rows.
+- Added a minimal shadcn `Dialog` stub for `Create Project` CTA placement.
+- Added reusable date formatting helper for `updated_at` display.
+
+### Files changed/added
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/lib/api/projects.ts`
+- `frontend/src/features/projects/queries.ts`
+- `frontend/src/lib/date.ts`
+- `frontend/src/components/projects/CreateProjectDialog.tsx`
+- `frontend/src/routes/ProjectsPage.tsx`
+
+### Manual verification
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+- `cd frontend && npm run dev -- --host 127.0.0.1 --port 4173` (dev server started)
+- Load `/projects` with backend running and confirm request URL: not fully verifiable in this sandbox (backend not available in-session).
+- Confirm skeletons on slow network/throttling: pending browser-network throttle verification locally.
+- Confirm empty state when API returns empty: pending backend response control locally.
+- Confirm navigation to `/projects/:id`: implemented via row `<Link>`; browser click verification pending locally.
+- Confirm error toast + retry by stopping/restarting backend: pending backend availability locally.
+
