@@ -240,3 +240,45 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-17 16:53 GMT - Verification pass for primitives + API error wrapper + mutation toasts
+
+### What changed
+- No code changes were required; the requested baseline infra was already present and consistent with the current FE conventions.
+- Added this log entry to document explicit verification against the Phase 1 brief acceptance criteria.
+
+### Primitives confirmed available
+- Confirmed importable shadcn/ui primitives exist in `frontend/src/components/ui/`:
+  - `badge.tsx`
+  - `card.tsx`
+  - `checkbox.tsx`
+  - `radio-group.tsx`
+  - `slider.tsx`
+- Confirmed required Radix deps are present in `frontend/package.json`:
+  - `@radix-ui/react-checkbox`
+  - `@radix-ui/react-radio-group`
+  - `@radix-ui/react-slider`
+
+### API wrapper + ApiError confirmed
+- Shared fetch wrapper is in `frontend/src/lib/api/client.ts` via `request(...)`:
+  - uses `fetch` with no auth headers
+  - resolves URLs under `/api/v1` using existing base URL resolver
+  - sets `Content-Type: application/json` only for JSON bodies
+  - parses JSON when content-type is JSON; otherwise falls back to text/null
+  - throws `new ApiError(response.status, payload)` on non-2xx
+- Typed `ApiError` is in `frontend/src/lib/api/errors.ts` with:
+  - `status: number`
+  - `body: unknown`
+- `getErrorMessage(...)` in `frontend/src/lib/api/errors.ts` prefers `ApiError.body.detail` and deterministically stringifies structured details (preserving backend `{"detail": ...}` semantics).
+
+### Global mutation error toast baseline confirmed
+- React Query global toast wiring is in `frontend/src/app/queryClient.ts` using `MutationCache.onError`.
+- Error messaging is sourced from `getErrorMessage(error)` and shown with destructive toast style:
+  - `title: "Something went wrong"`
+  - `description: <resolved error message>`
+- `frontend/src/app/providers.tsx` mounts shared `queryClient` and `Toaster` globally.
+
+### Verification run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
