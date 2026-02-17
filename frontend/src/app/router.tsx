@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { App } from '@/app/App'
 import { ProjectDetailPage } from '@/routes/ProjectDetailPage'
 import { ProjectsPage } from '@/routes/ProjectsPage'
+import { RunMonitorPage } from '@/routes/RunMonitorPage'
 import { VersionBuilderPage } from '@/routes/VersionBuilderPage'
 import { VersionPlaceholderPage } from '@/routes/VersionPlaceholderPage'
 
@@ -32,7 +33,7 @@ export const router = createBrowserRouter([
           },
           {
             path: ':projectId/versions/:versionId/run',
-            element: <VersionPlaceholderPage phase={3} title="Run" />,
+            element: <RunMonitorPage />,
           },
           {
             path: ':projectId/versions/:versionId/territory-review',

@@ -50,54 +50,155 @@ function isDateOrNull(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
-function isStageCheckpointResponse(value: unknown): value is StageCheckpointResponse {
-  if (!isRecord(value)) {
-    return false
+function toStageId(value: unknown, fieldName: string): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value
   }
 
-  return (
-    typeof value.id === 'string' &&
-    typeof value.stage_id === 'string' &&
-    isStageCheckpointStatus(value.status) &&
-    typeof value.progress_pct === 'number' &&
-    (value.summary === null || typeof value.summary === 'string') &&
-    isDateOrNull(value.started_at) &&
-    isDateOrNull(value.completed_at)
-  )
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (/^\d+$/.test(trimmed)) {
+      return Number(trimmed)
+    }
+    if (trimmed.startsWith('stage_')) {
+      const rawStage = trimmed.slice('stage_'.length)
+      if (/^\d+$/.test(rawStage)) {
+        return Number(rawStage)
+      }
+    }
+  }
+
+  throw new Error(`Invalid run payload: expected numeric ${fieldName}`)
 }
 
-function isRunStatusResponse(value: unknown): value is RunStatusResponse {
+function parseStageCheckpointResponse(value: unknown): StageCheckpointResponse {
   if (!isRecord(value)) {
-    return false
+    throw new Error('Invalid run payload: stage checkpoint is not an object')
+  }
+
+  if (typeof value.id !== 'string') {
+    throw new Error('Invalid run payload: stage checkpoint id must be a string')
+  }
+
+  if (!isStageCheckpointStatus(value.status)) {
+    throw new Error('Invalid run payload: stage checkpoint status is invalid')
+  }
+
+  if (typeof value.progress_pct !== 'number') {
+    throw new Error('Invalid run payload: stage checkpoint progress_pct must be a number')
+  }
+
+  if (value.summary !== null && typeof value.summary !== 'string') {
+    throw new Error('Invalid run payload: stage checkpoint summary must be string|null')
+  }
+
+  if (!isDateOrNull(value.started_at) || !isDateOrNull(value.completed_at)) {
+    throw new Error('Invalid run payload: stage checkpoint timestamps must be string|null')
+  }
+
+  return {
+    id: value.id,
+    stage_id: toStageId(value.stage_id, 'stage_id'),
+    status: value.status,
+    progress_pct: value.progress_pct,
+    summary: value.summary,
+    started_at: value.started_at,
+    completed_at: value.completed_at,
+  }
+}
+
+function parseProgress(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value === 'undefined') {
+    return null
+  }
+
+  if (isRecord(value)) {
+    return value
+  }
+
+  return null
+}
+
+export function parseRunStatusResponse(value: unknown): RunStatusResponse {
+  if (!isRecord(value)) {
+    throw new Error('Invalid run payload: status response is not an object')
+  }
+
+  if (typeof value.id !== 'string') {
+    throw new Error('Invalid run payload: id must be a string')
+  }
+  if (typeof value.version_id !== 'string') {
+    throw new Error('Invalid run payload: version_id must be a string')
+  }
+  if (!isRunState(value.state)) {
+    throw new Error('Invalid run payload: state is invalid')
+  }
+  if (!isDateOrNull(value.started_at) || !isDateOrNull(value.completed_at)) {
+    throw new Error('Invalid run payload: run timestamps must be string|null')
+  }
+  if (value.error_detail !== null && typeof value.error_detail !== 'string') {
+    throw new Error('Invalid run payload: error_detail must be string|null')
+  }
+  if (!Array.isArray(value.stages)) {
+    throw new Error('Invalid run payload: stages must be an array')
+  }
+
+  const parsedStages = value.stages
+    .map((stage) => parseStageCheckpointResponse(stage))
+    .sort((a, b) => a.stage_id - b.stage_id)
+
+  const current_stage =
+    value.current_stage === null || typeof value.current_stage === 'undefined'
+      ? null
+      : toStageId(value.current_stage, 'current_stage')
+
+  return {
+    id: value.id,
+    version_id: value.version_id,
+    state: value.state,
+    current_stage,
+    progress: parseProgress(value.progress),
+    started_at: value.started_at,
+    completed_at: value.completed_at,
+    error_detail: value.error_detail,
+    stages: parsedStages,
+  }
+}
+
+function parseRunSummaryResponse(value: unknown): RunSummaryResponse {
+  if (!isRecord(value)) {
+    throw new Error('Invalid run payload: summary response is not an object')
   }
 
   if (
     typeof value.id !== 'string' ||
-    typeof value.version_id !== 'string' ||
     !isRunState(value.state) ||
-    (value.current_stage !== null && typeof value.current_stage !== 'string') ||
-    !isRecord(value.progress) ||
-    !isDateOrNull(value.started_at) ||
-    !isDateOrNull(value.completed_at) ||
-    (value.error_detail !== null && typeof value.error_detail !== 'string') ||
-    !Array.isArray(value.stages)
+    !isDateOrNull(value.started_at)
   ) {
-    return false
+    throw new Error('Invalid run payload: malformed run summary')
   }
 
-  return value.stages.every((stage) => isStageCheckpointResponse(stage))
+  return {
+    id: value.id,
+    state: value.state,
+    started_at: value.started_at,
+  }
+}
+
+function parseCancelRunResponse(value: unknown): CancelRunResponse {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.cancelled !== 'boolean') {
+    throw new Error('Invalid run payload: malformed cancel response')
+  }
+
+  return {
+    id: value.id,
+    cancelled: value.cancelled,
+  }
 }
 
 function assertString(value: unknown, fieldName: string, eventType: RunSSEEventType): string {
   if (typeof value !== 'string') {
     throw new Error(`Invalid ${eventType} payload: expected string at ${fieldName}`)
-  }
-  return value
-}
-
-function assertNumber(value: unknown, fieldName: string, eventType: RunSSEEventType): number {
-  if (typeof value !== 'number') {
-    throw new Error(`Invalid ${eventType} payload: expected number at ${fieldName}`)
   }
   return value
 }
@@ -117,31 +218,57 @@ function parseSsePayload(rawData: string, eventType: RunSSEEventType): unknown {
   }
 }
 
+function resolveTimestamp(value: unknown): string {
+  if (typeof value === 'string' && !Number.isNaN(new Date(value).getTime())) {
+    return value
+  }
+
+  return new Date().toISOString()
+}
+
+function unwrapSsePayload(
+  payload: unknown,
+  eventType: RunSSEEventType,
+): { data: unknown; timestamp: string } {
+  if (
+    isRecord(payload) &&
+    typeof payload.event_type === 'string' &&
+    payload.event_type === eventType &&
+    'data' in payload
+  ) {
+    return {
+      data: payload.data,
+      timestamp: resolveTimestamp(payload.timestamp),
+    }
+  }
+
+  return {
+    data: payload,
+    timestamp: new Date().toISOString(),
+  }
+}
+
 export function parseSseEventData(eventType: RunSSEEventType, rawData: string): SSEEvent {
   const payload = parseSsePayload(rawData, eventType)
-  const timestamp = new Date().toISOString()
+  const { data, timestamp } = unwrapSsePayload(payload, eventType)
 
   if (eventType === 'snapshot') {
-    if (!isRunStatusResponse(payload)) {
-      throw new Error('Invalid snapshot payload: expected RunStatusResponse')
-    }
-
     return {
       event_type: 'snapshot',
       timestamp,
-      data: payload,
+      data: parseRunStatusResponse(data),
     }
   }
 
-  if (!isRecord(payload)) {
+  if (!isRecord(data)) {
     throw new Error(`Invalid ${eventType} payload: expected object`)
   }
 
-  const run_id = assertString(payload.run_id, 'run_id', eventType)
+  const run_id = assertString(data.run_id, 'run_id', eventType)
 
   if (eventType === 'run_completed') {
     return {
-      event_type: eventType,
+      event_type: 'run_completed',
       timestamp,
       data: { run_id },
     }
@@ -149,72 +276,67 @@ export function parseSseEventData(eventType: RunSSEEventType, rawData: string): 
 
   if (eventType === 'stage_started') {
     return {
-      event_type: eventType,
+      event_type: 'stage_started',
       timestamp,
       data: {
         run_id,
-        stage_id: assertNumber(payload.stage_id, 'stage_id', eventType),
+        stage_id: toStageId(data.stage_id, 'stage_id'),
       },
     }
   }
 
   if (eventType === 'stage_progress') {
+    if (typeof data.progress_pct !== 'number') {
+      throw new Error('Invalid stage_progress payload: expected number at progress_pct')
+    }
     return {
-      event_type: eventType,
+      event_type: 'stage_progress',
       timestamp,
       data: {
         run_id,
-        stage_id: assertNumber(payload.stage_id, 'stage_id', eventType),
-        progress_pct: assertNumber(payload.progress_pct, 'progress_pct', eventType),
+        stage_id: toStageId(data.stage_id, 'stage_id'),
+        progress_pct: data.progress_pct,
       },
     }
   }
 
   if (eventType === 'stage_completed') {
     return {
-      event_type: eventType,
+      event_type: 'stage_completed',
       timestamp,
       data: {
         run_id,
-        stage_id: assertNumber(payload.stage_id, 'stage_id', eventType),
-        summary: assertString(payload.summary, 'summary', eventType),
+        stage_id: toStageId(data.stage_id, 'stage_id'),
+        summary: assertString(data.summary, 'summary', eventType),
       },
     }
   }
 
   if (eventType === 'stage_failed') {
     return {
-      event_type: eventType,
+      event_type: 'stage_failed',
       timestamp,
       data: {
         run_id,
-        stage_id: assertNumber(payload.stage_id, 'stage_id', eventType),
-        error: assertString(payload.error, 'error', eventType),
+        stage_id: toStageId(data.stage_id, 'stage_id'),
+        error: assertString(data.error, 'error', eventType),
       },
     }
   }
 
   if (eventType === 'gate_reached') {
-    const stage_id = assertNumber(payload.stage_id, 'stage_id', eventType)
-    const run_state = payload.run_state
-    if (!isRunState(run_state)) {
-      throw new Error(`Invalid ${eventType} payload: expected run_state RunState`)
+    if (!isRunState(data.run_state)) {
+      throw new Error('Invalid gate_reached payload: run_state is invalid')
     }
-
     return {
-      event_type: eventType,
+      event_type: 'gate_reached',
       timestamp,
       data: {
         run_id,
-        stage_id,
-        run_state,
+        stage_id: toStageId(data.stage_id, 'stage_id'),
+        run_state: data.run_state,
       },
     }
-  }
-
-  const stage_id = payload.stage_id
-  if (stage_id !== null && typeof stage_id !== 'number') {
-    throw new Error(`Invalid ${eventType} payload: expected stage_id number|null`)
   }
 
   return {
@@ -222,9 +344,9 @@ export function parseSseEventData(eventType: RunSSEEventType, rawData: string): 
     timestamp,
     data: {
       run_id,
-      stage_id,
-      cancelled: assertBoolean(payload.cancelled, 'cancelled', eventType),
-      error: assertString(payload.error, 'error', eventType),
+      stage_id: data.stage_id === null || typeof data.stage_id === 'undefined' ? null : toStageId(data.stage_id, 'stage_id'),
+      cancelled: assertBoolean(data.cancelled, 'cancelled', eventType),
+      error: assertString(data.error, 'error', eventType),
     },
   }
 }
@@ -233,31 +355,36 @@ export async function startRun(
   versionId: string,
   body?: StartRunRequestBody,
 ): Promise<RunSummaryResponse> {
-  return request<RunSummaryResponse, StartRunRequestBody>(
+  const response = await request<unknown, StartRunRequestBody>(
     `/versions/${encodeURIComponent(versionId)}/runs/start`,
     {
       method: 'POST',
       ...(body ? { body } : {}),
     },
   )
+
+  return parseRunSummaryResponse(response)
 }
 
 export async function getRunStatus(runId: string): Promise<RunStatusResponse> {
-  return request<RunStatusResponse>(`/runs/${encodeURIComponent(runId)}/status`, {
+  const response = await request<unknown>(`/runs/${encodeURIComponent(runId)}/status`, {
     method: 'GET',
   })
+  return parseRunStatusResponse(response)
 }
 
 export async function cancelRun(runId: string): Promise<CancelRunResponse> {
-  return request<CancelRunResponse>(`/runs/${encodeURIComponent(runId)}/cancel`, {
+  const response = await request<unknown>(`/runs/${encodeURIComponent(runId)}/cancel`, {
     method: 'POST',
   })
+  return parseCancelRunResponse(response)
 }
 
 export async function retryRun(runId: string): Promise<RunStatusResponse> {
-  return request<RunStatusResponse>(`/runs/${encodeURIComponent(runId)}/retry`, {
+  const response = await request<unknown>(`/runs/${encodeURIComponent(runId)}/retry`, {
     method: 'POST',
   })
+  return parseRunStatusResponse(response)
 }
 
 export function createRunProgressEventSource(runId: string): EventSource {

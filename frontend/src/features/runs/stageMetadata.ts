@@ -21,24 +21,36 @@ export interface GateDefinition {
 }
 
 export const STAGE_METADATA: readonly StageMetadata[] = [
-  { stage_id: 0, label: 'Stage 0', phase: 'phase_1' },
-  { stage_id: 1, label: 'Stage 1', phase: 'phase_1' },
-  { stage_id: 2, label: 'Stage 2', phase: 'phase_2' },
-  { stage_id: 3, label: 'Stage 3', phase: 'phase_2' },
-  { stage_id: 4, label: 'Stage 4', phase: 'phase_2' },
-  { stage_id: 5, label: 'Stage 5', phase: 'phase_2' },
-  { stage_id: 6, label: 'Stage 6', phase: 'phase_2' },
-  { stage_id: 7, label: 'Stage 7', phase: 'phase_2' },
-  { stage_id: 8, label: 'Stage 8', phase: 'phase_2' },
-  { stage_id: 9, label: 'Stage 9', phase: 'phase_3' },
-  { stage_id: 10, label: 'Stage 10', phase: 'phase_3' },
-  { stage_id: 11, label: 'Stage 11', phase: 'phase_3' },
+  { stage_id: 0, label: 'Brief Intake', phase: 'phase_1' },
+  { stage_id: 1, label: 'Territory Exploration', phase: 'phase_1' },
+  { stage_id: 2, label: 'Generation Setup', phase: 'phase_2' },
+  { stage_id: 3, label: 'Candidate Expansion', phase: 'phase_2' },
+  { stage_id: 4, label: 'First-Pass Screening', phase: 'phase_2' },
+  { stage_id: 5, label: 'Cluster Refinement', phase: 'phase_2' },
+  { stage_id: 6, label: 'Linguistic Filtering', phase: 'phase_2' },
+  { stage_id: 7, label: 'Quality Scoring', phase: 'phase_2' },
+  { stage_id: 8, label: 'Generation Pack Assembly', phase: 'phase_2' },
+  { stage_id: 9, label: 'Trademark Deep Check', phase: 'phase_3' },
+  { stage_id: 10, label: 'Domain + Social Sweep', phase: 'phase_3' },
+  { stage_id: 11, label: 'Final Recommendation', phase: 'phase_3' },
 ] as const
 
 export const PHASE_HEADERS: readonly PhaseHeader[] = [
-  { phase: 'phase_1', label: 'Phase 1', stage_ids: [0, 1] },
-  { phase: 'phase_2', label: 'Phase 2', stage_ids: [2, 3, 4, 5, 6, 7, 8] },
-  { phase: 'phase_3', label: 'Phase 3', stage_ids: [9, 10, 11] },
+  {
+    phase: 'phase_1',
+    label: 'Phase 1: Research & Territories (Stages 0-1)',
+    stage_ids: [0, 1],
+  },
+  {
+    phase: 'phase_2',
+    label: 'Phase 2: Generation & Fast Screening (Stages 2-8)',
+    stage_ids: [2, 3, 4, 5, 6, 7, 8],
+  },
+  {
+    phase: 'phase_3',
+    label: 'Phase 3: Deep Clearance (Stages 9-11)',
+    stage_ids: [9, 10, 11],
+  },
 ] as const
 
 export const GATE_DEFINITIONS: readonly GateDefinition[] = [

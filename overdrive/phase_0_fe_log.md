@@ -465,3 +465,33 @@
 ### Commit/push
 - Commit created on `main` and pushed to `origin/main`:
   - `feat(frontend): add typed run api + sse hook with polling fallback`
+
+## 2026-02-17 22:48 GMT - Run Monitor page with live timeline, gates, and cancel/retry actions
+
+### Summary of files added/changed
+- Added `frontend/src/routes/RunMonitorPage.tsx` and routed `/projects/:projectId/versions/:versionId/run` to it in `frontend/src/app/router.tsx`.
+- Added desktop-only Run Monitor UI with:
+  - header breadcrumb/version badge/run-state badge/elapsed timer/connection indicator
+  - phase-grouped timeline for stages 0-11 with gate rows after stages 1 and 8
+  - stage status icons, running progress bars, completed summaries + durations, failed error expansion
+  - fixed bottom RunActionBar with cancel confirmation dialog, conditional retry action, and back link.
+- Added `frontend/src/components/ui/progress.tsx` (shadcn-style Progress primitive) and installed `@radix-ui/react-progress`.
+- Installed `framer-motion` and added `AnimatePresence` + `layout` transitions (<300ms) for stage/gate updates.
+- Updated runs scaffolding:
+  - `frontend/src/lib/api/runs.types.ts` and `frontend/src/lib/api/runs.ts` now normalize run payloads into typed stage numbers (`stage_id`, `current_stage`) and nullable `progress`.
+  - `frontend/src/features/runs/useRunProgress.ts` now supports SSE rejoin attempts while in polling fallback and restart via `start()` (used after retry).
+- Updated run stage metadata/phase headers in `frontend/src/features/runs/stageMetadata.ts` to include phase header copy used by the monitor.
+- Updated `frontend/src/lib/api/versions.ts` `VersionDetail` to include `latest_run_id: string | null` for run lookup.
+
+### Deviations / assumptions
+- Backend currently emits stage ids and `current_stage` as strings in some payloads (`"0".."11"`); frontend run API layer now safely normalizes both string and number stage values into numeric frontend types for consistent rendering.
+- Backend SSE `data:` does not include a timestamp field; monitor uses the hook event timestamp normalization from the existing runs parser.
+- `error_detail` parsing for failed stage details uses safe JSON parse with fallback priority:
+  1) failed stage summary (includes SSE `stage_failed` error when present)
+  2) parsed `run.error_detail`
+  3) generic fallback message.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

@@ -8,6 +8,7 @@ const TOTAL_STAGES = 12
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const
 const RECONNECT_DELAY_CAP_MS = 10000
 const POLL_INTERVAL_MS = 5000
+const POLL_SSE_RECONNECT_INTERVAL_MS = 10000
 const MAX_RECONNECT_FAILURES = 3
 
 export type RunProgressConnectionState = 'live' | 'reconnecting' | 'polling' | 'idle'
@@ -70,10 +71,6 @@ function getStageRunState(stageId: number): RunState | null {
   return null
 }
 
-function toStageCheckpointId(stageId: number): string {
-  return String(stageId)
-}
-
 function calculateOverallProgress(stageId: number, stageProgressPct: number): number {
   const completedUnits = stageId * 100 + stageProgressPct
   const totalUnits = TOTAL_STAGES * 100
@@ -85,7 +82,7 @@ function updateProgressPayload(
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
-    ...current.progress,
+    ...(current.progress ?? {}),
     ...patch,
   }
 }
@@ -95,9 +92,8 @@ function updateStageCheckpoint(
   stageId: number,
   update: (stage: RunStatusResponse['stages'][number]) => RunStatusResponse['stages'][number],
 ): RunStatusResponse['stages'] {
-  const targetId = toStageCheckpointId(stageId)
   return current.stages.map((stage) => {
-    if (stage.stage_id !== targetId) {
+    if (stage.stage_id !== stageId) {
       return stage
     }
     return update(stage)
@@ -118,7 +114,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
     return {
       ...current,
       state: getStageRunState(stage_id) ?? current.state,
-      current_stage: toStageCheckpointId(stage_id),
+      current_stage: stage_id,
       started_at: current.started_at ?? event.timestamp,
       progress: updateProgressPayload(current, {
         current_stage: stage_id,
@@ -141,7 +137,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
     return {
       ...current,
       state: getStageRunState(stage_id) ?? current.state,
-      current_stage: toStageCheckpointId(stage_id),
+      current_stage: stage_id,
       progress: updateProgressPayload(current, {
         current_stage: stage_id,
         stage_progress_pct: progress_pct,
@@ -159,7 +155,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
     const { stage_id, summary } = event.data
     return {
       ...current,
-      current_stage: toStageCheckpointId(stage_id),
+      current_stage: stage_id,
       progress: updateProgressPayload(current, {
         current_stage: stage_id,
         stage_progress_pct: 100,
@@ -180,7 +176,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
     return {
       ...current,
       state: 'failed',
-      current_stage: toStageCheckpointId(stage_id),
+      current_stage: stage_id,
       completed_at: current.completed_at ?? event.timestamp,
       error_detail: error,
       stages: updateStageCheckpoint(current, stage_id, (stage) => ({
@@ -197,7 +193,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
     return {
       ...current,
       state: run_state,
-      current_stage: toStageCheckpointId(stage_id),
+      current_stage: stage_id,
       progress: updateProgressPayload(current, {
         gate_stage: stage_id,
         stage_progress_pct: 100,
@@ -224,8 +220,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
   return {
     ...current,
     state: 'failed',
-    current_stage:
-      event.data.stage_id === null ? current.current_stage : toStageCheckpointId(event.data.stage_id),
+    current_stage: event.data.stage_id ?? current.current_stage,
     completed_at: current.completed_at ?? event.timestamp,
     error_detail: event.data.error,
     progress: updateProgressPayload(current, {
@@ -246,6 +241,7 @@ export function useRunProgress({
   const [connectionState, setConnectionState] = useState<RunProgressConnectionState>('idle')
   const [error, setError] = useState<Error | null>(null)
   const [stoppedRunId, setStoppedRunId] = useState<string | null>(null)
+  const [restartTick, setRestartTick] = useState(0)
   const statusRef = useRef<RunStatusResponse | null>(null)
 
   useEffect(() => {
@@ -263,6 +259,7 @@ export function useRunProgress({
     let eventSource: EventSource | null = null
     let reconnectTimer: number | null = null
     let pollingTimer: number | null = null
+    let pollingReconnectTimer: number | null = null
     let pollingInFlight = false
     let reconnectFailures = 0
     let isPolling = false
@@ -281,6 +278,13 @@ export function useRunProgress({
       }
     }
 
+    const clearPollingReconnectTimer = (): void => {
+      if (pollingReconnectTimer !== null) {
+        window.clearInterval(pollingReconnectTimer)
+        pollingReconnectTimer = null
+      }
+    }
+
     const closeEventSource = (): void => {
       if (eventSource) {
         eventSource.close()
@@ -291,6 +295,7 @@ export function useRunProgress({
     const stopNetwork = (): void => {
       clearReconnectTimer()
       clearPollingTimer()
+      clearPollingReconnectTimer()
       closeEventSource()
       isPolling = false
     }
@@ -329,42 +334,26 @@ export function useRunProgress({
       }
     }
 
-    const startPolling = (): void => {
-      if (disposed || isPolling) {
+    const connectSse = (allowDuringPolling = false): void => {
+      if (disposed) {
         return
       }
 
-      closeEventSource()
-      clearReconnectTimer()
-      isPolling = true
-      setConnectionState('polling')
-
-      void refreshStatus()
-      pollingTimer = window.setInterval(() => {
-        if (disposed || pollingInFlight) {
-          return
-        }
-
-        pollingInFlight = true
-        void refreshStatus().finally(() => {
-          pollingInFlight = false
-        })
-      }, POLL_INTERVAL_MS)
-    }
-
-    const connectSse = (): void => {
-      if (disposed || isPolling) {
+      if (isPolling && !allowDuringPolling) {
         return
       }
 
-      clearReconnectTimer()
-      closeEventSource()
+      if (eventSource) {
+        return
+      }
 
       try {
         eventSource = createRunProgressEventSource(runId)
       } catch (connectError) {
         setError(toError(connectError))
-        scheduleReconnect()
+        if (!isPolling) {
+          scheduleReconnect()
+        }
         return
       }
 
@@ -400,27 +389,69 @@ export function useRunProgress({
       }
 
       eventSource.onopen = () => {
-        if (disposed || isPolling) {
+        if (disposed) {
           return
         }
+
         reconnectFailures = 0
         setError(null)
+
+        if (isPolling) {
+          isPolling = false
+          clearPollingTimer()
+          clearPollingReconnectTimer()
+        }
+
         setConnectionState('live')
       }
 
       eventSource.onerror = () => {
-        if (disposed || isPolling) {
+        closeEventSource()
+
+        if (disposed) {
           return
         }
+
+        if (isPolling) {
+          setConnectionState('polling')
+          return
+        }
+
         scheduleReconnect()
       }
     }
 
-    const scheduleReconnect = (): void => {
+    const startPolling = (): void => {
+      if (disposed || isPolling) {
+        return
+      }
+
       closeEventSource()
       clearReconnectTimer()
+      isPolling = true
+      setConnectionState('polling')
 
+      void refreshStatus()
+      pollingTimer = window.setInterval(() => {
+        if (disposed || pollingInFlight) {
+          return
+        }
+
+        pollingInFlight = true
+        void refreshStatus().finally(() => {
+          pollingInFlight = false
+        })
+      }, POLL_INTERVAL_MS)
+
+      pollingReconnectTimer = window.setInterval(() => {
+        connectSse(true)
+      }, POLL_SSE_RECONNECT_INTERVAL_MS)
+    }
+
+    const scheduleReconnect = (): void => {
+      clearReconnectTimer()
       reconnectFailures += 1
+
       if (reconnectFailures > MAX_RECONNECT_FAILURES) {
         startPolling()
         return
@@ -429,23 +460,22 @@ export function useRunProgress({
       setConnectionState('reconnecting')
       const delayMs = getReconnectDelayMs(reconnectFailures)
       reconnectTimer = window.setTimeout(() => {
-        if (disposed || isPolling) {
-          return
-        }
         connectSse()
       }, delayMs)
     }
 
+    void refreshStatus()
     connectSse()
 
     return () => {
       disposed = true
       stopNetwork()
     }
-  }, [runId, shouldRun])
+  }, [runId, shouldRun, restartTick])
 
   const start = useCallback(() => {
     setStoppedRunId(null)
+    setRestartTick((current) => current + 1)
     setError(null)
   }, [])
 

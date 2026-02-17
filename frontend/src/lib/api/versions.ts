@@ -20,6 +20,7 @@ export interface VersionDetail {
   hotspots: unknown
   dials: unknown
   forked_from: string | null
+  latest_run_id: string | null
   created_at: string
   updated_at: string
 }

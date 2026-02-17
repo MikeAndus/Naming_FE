@@ -40,7 +40,7 @@ export interface RunSummaryResponse {
 
 export interface StageCheckpointResponse {
   id: string
-  stage_id: string
+  stage_id: number
   status: StageCheckpointStatus
   progress_pct: number
   summary: string | null
@@ -52,8 +52,8 @@ export interface RunStatusResponse {
   id: string
   version_id: string
   state: RunState
-  current_stage: string | null
-  progress: Record<string, unknown>
+  current_stage: number | null
+  progress: Record<string, unknown> | null
   started_at: string | null
   completed_at: string | null
   error_detail: string | null
