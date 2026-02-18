@@ -1113,3 +1113,33 @@
 - On draft edits with unselected enum fields, click Save and confirm PATCH omits untouched enum keys.
 - Edit only one section and confirm request contains only that top-level section key.
 - Click Start Run with incomplete brief/hotspots/dials and confirm 422 produces inline field/section errors and expanded relevant section(s).
+
+## 2026-02-18 20:27 GMT - Version Builder nested Brief payload mapping + 422 nested path remap
+
+### Files changed
+- `frontend/src/routes/VersionBuilderPage.tsx`
+
+### What changed
+- Fixed `buildPatchPayload('brief')` serialization to send a nested `brief` object shape compatible with backend `BriefPayload` expectations:
+  - `brief.product.{ what_it_is, description }`
+  - `brief.audience.{ target_market, audience_context, price_tier, channel, tone_sliders }`
+  - `brief.differentiation.{ differentiators }`
+  - `brief.constraints.{ no_go_words, must_avoid_implying }`
+- Kept PATCH-permissive behavior by omitting empty/unchanged nested fields while preserving correct nested structure.
+- Updated brief normalization to support both legacy flat saved payloads and nested payloads already stored in backend.
+- Updated hotspots serialization to remain schema-compatible while omitting placeholder-only rows and empty per-row fields.
+- Updated dials serialization to include backend key `domain_check: true` and keep optional enum omission behavior.
+- Added nested validation path remapping for Start Run 422 responses so backend paths like:
+  - `brief.product.what_it_is`
+  - `brief.audience.tone.playful_serious`
+  - `brief.differentiation.differentiators.0`
+  map back to existing UI field keys (`brief.what_it_is`, `brief.playful_serious`, `brief.differentiators.0`) for inline display.
+
+### Verification
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
+### Manual verification to run locally
+- Edit Brief only, save, and confirm payload is nested under top-level `brief` (no flat root brief fields).
+- Start Run with intentionally invalid brief fields and confirm inline errors appear on the corresponding inputs via remapped nested 422 paths.

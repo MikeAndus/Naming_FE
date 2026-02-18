@@ -89,39 +89,141 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function readNestedString(value: unknown, key: string, nestedKey?: string): string {
-  if (!isRecord(value)) {
-    return ''
+function readPath(value: unknown, path: string[]): unknown {
+  let current: unknown = value
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return undefined
+    }
+    current = current[segment]
   }
+  return current
+}
 
-  if (typeof value[key] === 'string') {
-    return value[key]
+function readStringAtPaths(value: unknown, paths: string[][]): string {
+  for (const path of paths) {
+    const candidate = readPath(value, path)
+    if (typeof candidate === 'string') {
+      return candidate
+    }
   }
-
-  if (nestedKey && isRecord(value[key]) && typeof value[key][nestedKey] === 'string') {
-    return value[key][nestedKey] as string
-  }
-
   return ''
 }
 
-function readNestedNumber(value: unknown, key: string, fallback: number): number {
-  if (!isRecord(value)) {
-    return fallback
+function readNumberAtPaths(value: unknown, paths: string[][], fallback: number): number {
+  for (const path of paths) {
+    const candidate = readPath(value, path)
+    if (typeof candidate === 'number' && !Number.isNaN(candidate)) {
+      if (candidate < 1) {
+        return 1
+      }
+      if (candidate > 5) {
+        return 5
+      }
+      return candidate
+    }
+  }
+  return fallback
+}
+
+function readStringArrayAtPaths(value: unknown, paths: string[][]): string[] {
+  for (const path of paths) {
+    const candidate = readPath(value, path)
+    if (Array.isArray(candidate)) {
+      return candidate.filter((item): item is string => typeof item === 'string')
+    }
+  }
+  return []
+}
+
+function hasOwnKeys(value: Record<string, unknown>): boolean {
+  return Object.keys(value).length > 0
+}
+
+function mapValidationPath(section: SectionKey, normalizedLoc: Array<string | number>): string | null {
+  if (normalizedLoc.length === 0) {
+    return null
   }
 
-  const raw = value[key]
-  if (typeof raw !== 'number' || Number.isNaN(raw)) {
-    return fallback
+  if (section === 'hotspots' || section === 'dials') {
+    return normalizedLoc.join('.')
   }
 
-  if (raw < 1) {
-    return 1
+  const briefPath = normalizedLoc.slice(1).map((part) => String(part))
+  if (briefPath.length === 0) {
+    return null
   }
-  if (raw > 5) {
-    return 5
+
+  if (briefPath.length === 1) {
+    const [field] = briefPath
+    if (
+      field === 'what_it_is' ||
+      field === 'description' ||
+      field === 'target_market' ||
+      field === 'audience_context' ||
+      field === 'price_tier' ||
+      field === 'channel' ||
+      field === 'playful_serious' ||
+      field === 'modern_heritage' ||
+      field === 'mass_premium' ||
+      field === 'bold_calm' ||
+      field === 'must_avoid_implying'
+    ) {
+      return `brief.${field}`
+    }
   }
-  return raw
+
+  if (briefPath[0] === 'product') {
+    if (briefPath[1] === 'what_it_is' || briefPath[1] === 'description') {
+      return `brief.${briefPath[1]}`
+    }
+    return null
+  }
+
+  if (briefPath[0] === 'audience') {
+    if (
+      briefPath[1] === 'target_market' ||
+      briefPath[1] === 'audience_context' ||
+      briefPath[1] === 'price_tier' ||
+      briefPath[1] === 'channel'
+    ) {
+      return `brief.${briefPath[1]}`
+    }
+
+    if (
+      (briefPath[1] === 'tone' || briefPath[1] === 'tone_sliders') &&
+      (briefPath[2] === 'playful_serious' ||
+        briefPath[2] === 'modern_heritage' ||
+        briefPath[2] === 'mass_premium' ||
+        briefPath[2] === 'bold_calm')
+    ) {
+      return `brief.${briefPath[2]}`
+    }
+
+    return null
+  }
+
+  if (briefPath[0] === 'differentiation' && briefPath[1] === 'differentiators') {
+    if (briefPath.length > 2) {
+      return `brief.differentiators.${briefPath[2]}`
+    }
+    return 'brief.differentiators'
+  }
+
+  if (briefPath[0] === 'constraints') {
+    if (briefPath[1] === 'must_avoid_implying') {
+      return 'brief.must_avoid_implying'
+    }
+    if (briefPath[1] === 'no_go_words') {
+      if (briefPath.length > 2) {
+        return `brief.no_go_words.${briefPath[2]}`
+      }
+      return 'brief.no_go_words'
+    }
+    return null
+  }
+
+  return null
 }
 
 function createHotspotState(): HotspotState {
@@ -137,8 +239,11 @@ function createHotspotState(): HotspotState {
 }
 
 function normalizeBrief(value: unknown): BriefState {
-  const differentiators = isRecord(value) && Array.isArray(value.differentiators) ? value.differentiators : []
-  const noGoWords = isRecord(value) && Array.isArray(value.no_go_words) ? value.no_go_words : []
+  const differentiators = readStringArrayAtPaths(value, [
+    ['differentiators'],
+    ['differentiation', 'differentiators'],
+  ])
+  const noGoWords = readStringArrayAtPaths(value, [['no_go_words'], ['constraints', 'no_go_words']])
 
   const normalizedDifferentiators = differentiators
     .filter((item): item is string => typeof item === 'string')
@@ -148,27 +253,45 @@ function normalizeBrief(value: unknown): BriefState {
   }
 
   const normalizedNoGoWords = noGoWords
-    .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim())
     .filter(Boolean)
 
-  const priceTier = readNestedString(value, 'price_tier')
-  const channel = readNestedString(value, 'channel')
+  const priceTier = readStringAtPaths(value, [['price_tier'], ['audience', 'price_tier']])
+  const channel = readStringAtPaths(value, [['channel'], ['audience', 'channel']])
 
   return {
-    what_it_is: readNestedString(value, 'what_it_is'),
-    description: readNestedString(value, 'description'),
-    target_market: readNestedString(value, 'target_market'),
-    audience_context: readNestedString(value, 'audience_context'),
+    what_it_is: readStringAtPaths(value, [['what_it_is'], ['product', 'what_it_is']]),
+    description: readStringAtPaths(value, [['description'], ['product', 'description']]),
+    target_market: readStringAtPaths(value, [['target_market'], ['audience', 'target_market']]),
+    audience_context: readStringAtPaths(value, [['audience_context'], ['audience', 'audience_context']]),
     price_tier: PRICE_TIERS.includes(priceTier as PriceTier) ? (priceTier as PriceTier) : '',
     channel: CHANNELS.includes(channel as Channel) ? (channel as Channel) : '',
-    playful_serious: readNestedNumber(value, 'playful_serious', 3),
-    modern_heritage: readNestedNumber(value, 'modern_heritage', 3),
-    mass_premium: readNestedNumber(value, 'mass_premium', 3),
-    bold_calm: readNestedNumber(value, 'bold_calm', 3),
+    playful_serious: readNumberAtPaths(
+      value,
+      [['playful_serious'], ['audience', 'tone', 'playful_serious'], ['audience', 'tone_sliders', 'playful_serious']],
+      3,
+    ),
+    modern_heritage: readNumberAtPaths(
+      value,
+      [['modern_heritage'], ['audience', 'tone', 'modern_heritage'], ['audience', 'tone_sliders', 'modern_heritage']],
+      3,
+    ),
+    mass_premium: readNumberAtPaths(
+      value,
+      [['mass_premium'], ['audience', 'tone', 'mass_premium'], ['audience', 'tone_sliders', 'mass_premium']],
+      3,
+    ),
+    bold_calm: readNumberAtPaths(
+      value,
+      [['bold_calm'], ['audience', 'tone', 'bold_calm'], ['audience', 'tone_sliders', 'bold_calm']],
+      3,
+    ),
     differentiators: normalizedDifferentiators,
     no_go_words: normalizedNoGoWords,
-    must_avoid_implying: readNestedString(value, 'must_avoid_implying'),
+    must_avoid_implying: readStringAtPaths(value, [
+      ['must_avoid_implying'],
+      ['constraints', 'must_avoid_implying'],
+    ]),
   }
 }
 
@@ -201,8 +324,8 @@ function normalizeHotspots(value: unknown): HotspotState[] {
 }
 
 function normalizeDials(value: unknown): DialsState {
-  const formatMode = readNestedString(value, 'format_mode')
-  const trademarkPosture = readNestedString(value, 'trademark_posture')
+  const formatMode = readStringAtPaths(value, [['format_mode']])
+  const trademarkPosture = readStringAtPaths(value, [['trademark_posture']])
   const socialChecks =
     isRecord(value) && Array.isArray(value.social_checks) ? value.social_checks : []
 
@@ -218,36 +341,82 @@ function normalizeDials(value: unknown): DialsState {
         typeof item === 'string' &&
         SOCIAL_CHECK_OPTIONS.includes(item as SocialCheck),
     ),
-    domain_check_enabled: true,
+    domain_check_enabled:
+      readPath(value, ['domain_check']) === false || readPath(value, ['domain_check_enabled']) === false
+        ? false
+        : true,
   }
 }
 
 function serializeBrief(brief: BriefState): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    what_it_is: brief.what_it_is.trim(),
-    description: brief.description.trim(),
-    target_market: brief.target_market.trim(),
-    audience_context: brief.audience_context.trim(),
+  const product: Record<string, unknown> = {}
+  const audience: Record<string, unknown> = {}
+  const differentiation: Record<string, unknown> = {}
+  const constraints: Record<string, unknown> = {}
+
+  const whatItIs = brief.what_it_is.trim()
+  const description = brief.description.trim()
+  if (whatItIs) {
+    product.what_it_is = whatItIs
+  }
+  if (description) {
+    product.description = description
+  }
+
+  const targetMarket = brief.target_market.trim()
+  const audienceContext = brief.audience_context.trim()
+  if (targetMarket) {
+    audience.target_market = targetMarket
+  }
+  if (audienceContext) {
+    audience.audience_context = audienceContext
+  }
+  if (PRICE_TIERS.includes(brief.price_tier as PriceTier)) {
+    audience.price_tier = brief.price_tier
+  }
+  if (CHANNELS.includes(brief.channel as Channel)) {
+    audience.channel = brief.channel
+  }
+  audience.tone_sliders = {
     playful_serious: brief.playful_serious,
     modern_heritage: brief.modern_heritage,
     mass_premium: brief.mass_premium,
     bold_calm: brief.bold_calm,
-    differentiators: brief.differentiators.map((item) => item.trim()).filter(Boolean),
-    no_go_words: [...new Set(brief.no_go_words.map((item) => item.trim()).filter(Boolean))],
-    must_avoid_implying: brief.must_avoid_implying.trim(),
   }
 
-  if (PRICE_TIERS.includes(brief.price_tier as PriceTier)) {
-    payload.price_tier = brief.price_tier
-  }
-  if (CHANNELS.includes(brief.channel as Channel)) {
-    payload.channel = brief.channel
+  const differentiators = brief.differentiators
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (differentiators.length > 0) {
+    differentiation.differentiators = differentiators
   }
 
+  const noGoWords = [...new Set(brief.no_go_words.map((item) => item.trim()).filter(Boolean))]
+  if (noGoWords.length > 0) {
+    constraints.no_go_words = noGoWords
+  }
+  const mustAvoidImplying = brief.must_avoid_implying.trim()
+  if (mustAvoidImplying) {
+    constraints.must_avoid_implying = mustAvoidImplying
+  }
+
+  const payload: Record<string, unknown> = {}
+  if (hasOwnKeys(product)) {
+    payload.product = product
+  }
+  if (hasOwnKeys(audience)) {
+    payload.audience = audience
+  }
+  if (hasOwnKeys(differentiation)) {
+    payload.differentiation = differentiation
+  }
+  if (hasOwnKeys(constraints)) {
+    payload.constraints = constraints
+  }
   return payload
 }
 
-function serializeHotspots(hotspots: HotspotState[]): Array<{ id: string; name: string; paragraph: string; weight?: number }> {
+function serializeHotspots(hotspots: HotspotState[]): Array<Record<string, unknown>> {
   return hotspots
     .map((hotspot) => {
       const name = hotspot.name.trim()
@@ -257,8 +426,8 @@ function serializeHotspots(hotspots: HotspotState[]): Array<{ id: string; name: 
 
       return {
         id: hotspot.id,
-        name,
-        paragraph,
+        ...(name ? { name } : {}),
+        ...(paragraph ? { paragraph } : {}),
         hasContent: Boolean(name || paragraph || hasWeight),
         ...(Number.isFinite(parsedWeight) ? { weight: parsedWeight } : {}),
       }
@@ -274,6 +443,7 @@ function serializeHotspots(hotspots: HotspotState[]): Array<{ id: string; name: 
 function serializeDials(dials: DialsState): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     social_checks: dials.social_checks.filter((value, index, array) => array.indexOf(value) === index),
+    domain_check: true,
   }
 
   if (FORMAT_MODES.includes(dials.format_mode as FormatMode)) {
@@ -472,8 +642,12 @@ function parse422ValidationErrors(error: unknown): ValidationResult & { section:
     }
 
     section = section ?? root
-    const path = normalizedLoc.join('.')
-    fieldErrors[path] = message
+    const mappedPath = mapValidationPath(root, normalizedLoc)
+    if (!mappedPath) {
+      sectionError = sectionError ?? message
+      return
+    }
+    fieldErrors[mappedPath] = message
   })
 
   return { fieldErrors, section, sectionError }
