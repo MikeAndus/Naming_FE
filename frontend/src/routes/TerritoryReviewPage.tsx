@@ -1,4 +1,5 @@
-import { useState, useSyncExternalStore } from 'react'
+import { type FormEvent, useState, useSyncExternalStore } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
@@ -11,18 +12,31 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import { useProjectDetailQuery } from '@/features/projects/queries'
 import { useRunStatusQuery } from '@/features/runs/queries'
 import { TerritoryCardList } from '@/features/territoryReview/components/TerritoryCardList'
 import {
+  useAddTerritoryCardMutation,
   usePatchTerritoryCardStatusMutation,
   useResearchSnapshot,
+  useReviseTerritoryCardMutation,
   useTerritoryCards,
 } from '@/features/territoryReview/queries'
 import { useVersionDetailQuery } from '@/features/versions/queries'
 import {
   getErrorMessage,
+  TERRITORY_REVIEW_AI_UNAVAILABLE_DETAIL,
+  TERRITORY_REVIEW_INVALID_LLM_SCHEMA_DETAIL,
   type ParsedTerritoryReviewError,
   parseTerritoryReviewError,
   type ResearchSnapshot,
@@ -146,6 +160,24 @@ function getStatusMutationErrorMessage(parsedError: ParsedTerritoryReviewError):
   }
 
   return parsedError.message || 'Unable to update card status. Please retry.'
+}
+
+const MAX_TERRITORY_CARDS = 10
+
+function getLlmMutationErrorMessage(parsedError: ParsedTerritoryReviewError): string {
+  if (parsedError.status === 500 || parsedError.kind === 'invalid_llm_schema') {
+    return TERRITORY_REVIEW_INVALID_LLM_SCHEMA_DETAIL
+  }
+
+  if (parsedError.status === 502 || parsedError.kind === 'ai_unavailable') {
+    return TERRITORY_REVIEW_AI_UNAVAILABLE_DETAIL
+  }
+
+  if (parsedError.kind === 'conflict') {
+    return parsedError.message || 'This run is not in territory review; generation is locked.'
+  }
+
+  return parsedError.message || 'Unable to generate territory card. Please retry.'
 }
 
 function SnapshotSkeleton() {
@@ -282,6 +314,9 @@ export function TerritoryReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
   const isDesktop = useIsDesktop()
   const [isSnapshotCollapsed, setIsSnapshotCollapsed] = useState(false)
+  const [isAddCardDialogOpen, setIsAddCardDialogOpen] = useState(false)
+  const [addCardPrompt, setAddCardPrompt] = useState('')
+  const [addCardInlineError, setAddCardInlineError] = useState<string | null>(null)
 
   const projectQuery = useProjectDetailQuery(projectId)
   const versionQuery = useVersionDetailQuery(versionId)
@@ -293,6 +328,12 @@ export function TerritoryReviewPage() {
   )
 
   const patchTerritoryCardMutation = usePatchTerritoryCardStatusMutation(
+    hasTerritoryReviewRun ? runId : undefined,
+  )
+  const reviseTerritoryCardMutation = useReviseTerritoryCardMutation(
+    hasTerritoryReviewRun ? runId : undefined,
+  )
+  const addTerritoryCardMutation = useAddTerritoryCardMutation(
     hasTerritoryReviewRun ? runId : undefined,
   )
 
@@ -355,6 +396,75 @@ export function TerritoryReviewPage() {
         },
       )
     })
+  }
+
+  const handleReviseCard = (
+    cardId: string,
+    revisionPrompt: string,
+  ): Promise<boolean> => {
+    return new Promise((resolve) => {
+      reviseTerritoryCardMutation.mutate(
+        {
+          cardId,
+          revisionPrompt,
+        },
+        {
+          onSuccess: () => {
+            resolve(true)
+          },
+          onError: (error) => {
+            const parsedError = parseTerritoryReviewError(error)
+            toast({
+              variant: 'destructive',
+              title: 'Revision failed',
+              description: getLlmMutationErrorMessage(parsedError),
+            })
+            resolve(false)
+          },
+        },
+      )
+    })
+  }
+
+  const handleAddCardSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if ((territoryCardsQuery.data?.length ?? 0) >= MAX_TERRITORY_CARDS) {
+      const limitMessage = 'Card limit reached (10). Remove/reject cards before adding more.'
+      setAddCardInlineError(limitMessage)
+      return
+    }
+
+    const trimmedPrompt = addCardPrompt.trim()
+    if (!trimmedPrompt) {
+      setAddCardInlineError('Prompt is required.')
+      return
+    }
+
+    setAddCardInlineError(null)
+    addTerritoryCardMutation.mutate(
+      { prompt: trimmedPrompt },
+      {
+        onSuccess: () => {
+          setIsAddCardDialogOpen(false)
+          setAddCardPrompt('')
+          setAddCardInlineError(null)
+          toast({
+            title: 'New territory card added',
+          })
+        },
+        onError: (error) => {
+          const parsedError = parseTerritoryReviewError(error)
+          const message = getLlmMutationErrorMessage(parsedError)
+          setAddCardInlineError(message)
+          toast({
+            variant: 'destructive',
+            title: 'Add card failed',
+            description: message,
+          })
+        },
+      },
+    )
   }
 
   const projectLabel = projectQuery.data?.name?.trim() || 'Project'
@@ -514,6 +624,12 @@ export function TerritoryReviewPage() {
 
   const cards = territoryCardsQuery.data ?? []
   const showCardsCountSkeleton = isRunResolutionLoading || isCardsInitialLoading
+  const hasReachedCardLimit = cards.length >= MAX_TERRITORY_CARDS
+  const isAddCardDisabled =
+    isRunResolutionLoading ||
+    isCardsInitialLoading ||
+    territoryCardsQuery.isError ||
+    hasReachedCardLimit
 
   return (
     <section className="space-y-4 pb-8">
@@ -589,15 +705,40 @@ export function TerritoryReviewPage() {
 
         <Card className="h-[calc(100vh-12.5rem)] overflow-hidden">
           <CardHeader className="border-b">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>Territory Cards</CardTitle>
-              {showCardsCountSkeleton ? (
-                <Skeleton className="h-6 w-10 rounded-full" />
-              ) : (
-                <Badge variant="outline">{cards.length}</Badge>
-              )}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CardTitle>Territory Cards</CardTitle>
+                {showCardsCountSkeleton ? (
+                  <Skeleton className="h-6 w-10 rounded-full" />
+                ) : (
+                  <Badge variant="outline">{cards.length}</Badge>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  disabled={isAddCardDisabled}
+                  onClick={() => {
+                    setAddCardInlineError(null)
+                    setIsAddCardDialogOpen(true)
+                  }}
+                  size="sm"
+                  title={
+                    hasReachedCardLimit
+                      ? 'Card limit reached (10). Remove/reject cards before adding more.'
+                      : undefined
+                  }
+                  type="button"
+                >
+                  Add New Card
+                </Button>
+                {hasReachedCardLimit ? (
+                  <p className="text-xs text-muted-foreground">
+                    Card limit reached (10). Remove/reject cards before adding more.
+                  </p>
+                ) : null}
+              </div>
             </div>
-            <CardDescription>Status-only review actions for this territory review gate.</CardDescription>
+            <CardDescription>Review, revise, and add cards for this territory review gate.</CardDescription>
           </CardHeader>
           <CardContent className="h-full overflow-y-auto pt-6">
             {isRunResolutionLoading || isCardsInitialLoading ? <CardsSkeleton /> : null}
@@ -616,8 +757,10 @@ export function TerritoryReviewPage() {
               <TerritoryCardList
                 cards={cards}
                 isCardPending={patchTerritoryCardMutation.isCardPending}
+                isCardRevising={reviseTerritoryCardMutation.isCardPending}
                 onApprove={handleApproveCard}
                 onReject={handleRejectCard}
+                onReviseCard={handleReviseCard}
                 onRestore={handleRestoreCard}
                 onSaveCardData={handleSaveCardData}
               />
@@ -625,6 +768,86 @@ export function TerritoryReviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        onOpenChange={(nextOpen) => {
+          if (!addTerritoryCardMutation.isPending) {
+            setIsAddCardDialogOpen(nextOpen)
+          }
+        }}
+        open={isAddCardDialogOpen}
+      >
+        <DialogContent
+          className="sm:max-w-xl"
+          onEscapeKeyDown={(event) => {
+            if (addTerritoryCardMutation.isPending) {
+              event.preventDefault()
+            }
+          }}
+          onPointerDownOutside={(event) => {
+            if (addTerritoryCardMutation.isPending) {
+              event.preventDefault()
+            }
+          }}
+        >
+          <form className="space-y-4" onSubmit={handleAddCardSubmit}>
+            <DialogHeader>
+              <DialogTitle>Add New Card</DialogTitle>
+              <DialogDescription>
+                Write a prompt and generate a new user-added territory card.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Textarea
+                className="min-h-[150px]"
+                disabled={addTerritoryCardMutation.isPending}
+                onChange={(event) => {
+                  setAddCardPrompt(event.target.value)
+                  if (addCardInlineError) {
+                    setAddCardInlineError(null)
+                  }
+                }}
+                placeholder="Example: Build a territory around resilient growth, confident tone, and practical innovation."
+                value={addCardPrompt}
+              />
+              {addTerritoryCardMutation.isPending ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating territory card...
+                </p>
+              ) : null}
+              {addCardInlineError ? (
+                <p className="text-sm text-destructive">{addCardInlineError}</p>
+              ) : null}
+            </div>
+
+            <DialogFooter>
+              <Button
+                disabled={addTerritoryCardMutation.isPending}
+                onClick={() => setIsAddCardDialogOpen(false)}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={addTerritoryCardMutation.isPending || addCardPrompt.trim().length === 0}
+                type="submit"
+              >
+                {addTerritoryCardMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Card'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

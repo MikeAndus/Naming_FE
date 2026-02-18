@@ -37,6 +37,9 @@ const territoryReviewPatchMutationKey = (runId: string) =>
 const territoryReviewReviseMutationKey = (runId: string) =>
   ['territory-review', 'revise-card', runId] as const
 
+const territoryReviewAddMutationKey = (runId: string) =>
+  ['territory-review', 'add-card', runId] as const
+
 function requireRunId(runId: string | undefined): string {
   if (!runId) {
     throw new Error('runId is required for territory review mutation')
@@ -64,12 +67,28 @@ function applyPatchToCard(card: TerritoryCard, patch: PatchTerritoryCardRequest)
 function mergePatchResponseIntoCard(
   card: TerritoryCard,
   response: TerritoryCardPatchResponse,
+  revisionPrompt: string | null = card.revision_prompt,
 ): TerritoryCard {
   return {
     ...card,
     status: response.status,
     card_data: response.card_data,
     is_human_override: response.is_human_override,
+    revision_prompt: revisionPrompt,
+  }
+}
+
+function buildCardFromPatchResponse(
+  response: TerritoryCardPatchResponse,
+  revisionPrompt: string | null,
+): TerritoryCard {
+  return {
+    id: response.id,
+    source_hotspot_id: null,
+    status: response.status,
+    card_data: response.card_data,
+    is_human_override: response.is_human_override,
+    revision_prompt: revisionPrompt,
   }
 }
 
@@ -266,7 +285,7 @@ export function useReviseTerritoryCardMutation(runId: string | undefined) {
     meta: {
       suppressGlobalErrorToast: true,
     },
-    onSuccess: (response) => {
+    onSuccess: (response, variables) => {
       if (!runId) {
         return
       }
@@ -279,7 +298,9 @@ export function useReviseTerritoryCardMutation(runId: string | undefined) {
           }
 
           return current.map((card) =>
-            card.id === response.id ? mergePatchResponseIntoCard(card, response) : card,
+            card.id === response.id
+              ? mergePatchResponseIntoCard(card, response, variables.revisionPrompt)
+              : card,
           )
         },
       )
@@ -321,8 +342,11 @@ export interface AddTerritoryCardVariables {
 
 export function useAddTerritoryCardMutation(runId: string | undefined) {
   const queryClient = useQueryClient()
+  const scopedRunId = runId ?? 'missing-run-id'
+  const mutationKey = territoryReviewAddMutationKey(scopedRunId)
 
   return useMutation<AddTerritoryCardResponse, unknown, AddTerritoryCardVariables>({
+    mutationKey,
     mutationFn: ({ prompt }) =>
       addTerritoryCard(requireRunId(runId), {
         prompt,
@@ -330,10 +354,21 @@ export function useAddTerritoryCardMutation(runId: string | undefined) {
     meta: {
       suppressGlobalErrorToast: true,
     },
-    onSuccess: () => {
+    onSuccess: (response, variables) => {
       if (!runId) {
         return
       }
+
+      queryClient.setQueryData<ListTerritoryCardsResponse>(
+        territoryReviewCardsQueryKey(runId),
+        (current) => {
+          const nextCard = buildCardFromPatchResponse(response, variables.prompt)
+          const cardsWithoutDuplicate = (current ?? []).filter(
+            (existingCard) => existingCard.id !== response.id,
+          )
+          return [...cardsWithoutDuplicate, nextCard]
+        },
+      )
 
       void queryClient.invalidateQueries({
         queryKey: territoryReviewCardsQueryKey(runId),

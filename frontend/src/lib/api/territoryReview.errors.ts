@@ -18,30 +18,46 @@ export interface ParsedTerritoryReviewError {
   message: string
 }
 
-function classifyTerritoryReviewApiError(status: number, detail: unknown): TerritoryReviewErrorKind {
+function classifyTerritoryReviewApiError(status: number): TerritoryReviewErrorKind {
   if (status === 409) {
     return 'conflict'
   }
 
-  if (status === 500 && detail === TERRITORY_REVIEW_INVALID_LLM_SCHEMA_DETAIL) {
+  if (status === 500) {
     return 'invalid_llm_schema'
   }
 
-  if (status === 502 && detail === TERRITORY_REVIEW_AI_UNAVAILABLE_DETAIL) {
+  if (status === 502) {
     return 'ai_unavailable'
   }
 
   return 'unknown'
 }
 
+function getTerritoryReviewErrorMessage(
+  kind: TerritoryReviewErrorKind,
+  fallbackMessage: string,
+): string {
+  if (kind === 'invalid_llm_schema') {
+    return TERRITORY_REVIEW_INVALID_LLM_SCHEMA_DETAIL
+  }
+
+  if (kind === 'ai_unavailable') {
+    return TERRITORY_REVIEW_AI_UNAVAILABLE_DETAIL
+  }
+
+  return fallbackMessage
+}
+
 export function parseTerritoryReviewError(error: unknown): ParsedTerritoryReviewError {
   if (isApiError(error)) {
     const detail = parseApiErrorDetail(error.body)
+    const kind = classifyTerritoryReviewApiError(error.status)
     return {
-      kind: classifyTerritoryReviewApiError(error.status, detail),
+      kind,
       status: error.status,
       detail,
-      message: getErrorMessage(error),
+      message: getTerritoryReviewErrorMessage(kind, getErrorMessage(error)),
     }
   }
 

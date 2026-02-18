@@ -887,3 +887,59 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-18 13:46 GMT - Territory Review LLM revise/add workflows with latency UX + retry handling
+
+### Files updated
+- `frontend/src/features/territoryReview/components/TerritoryCard.tsx`
+- `frontend/src/features/territoryReview/components/TerritoryCardList.tsx`
+- `frontend/src/features/territoryReview/queries.ts`
+- `frontend/src/lib/api/territoryReview.errors.ts`
+- `frontend/src/routes/TerritoryReviewPage.tsx`
+
+### Summary of UI additions
+- Added card-scoped `Prompt to Revise` dialog in `TerritoryCard`:
+  - multiline prompt input
+  - per-card loading overlay (`Revising territory card...`) during LLM round-trip
+  - prompt text is preserved on failure for retry
+  - dialog closes/reset only on successful revise
+- Added board-level `Add New Card` modal in `TerritoryReviewPage`:
+  - collects user prompt via textarea
+  - while request is pending, modal remains open and shows `Generating territory card...` with spinner
+  - close/cancel interactions are blocked during in-flight generation
+  - inline modal error is shown on failure and prompt remains intact for retry
+- Added card entrance animation for append events using Framer Motion in `TerritoryCardList` (`AnimatePresence` + `motion.div` with mount fade/slide).
+- Added UI-only soft cap at 10 cards:
+  - `Add New Card` is disabled when `cards.length >= 10`
+  - button `title` + helper text explain cap: `Card limit reached (10). Remove/reject cards before adding more.`
+
+### API endpoints invoked
+- `POST /api/v1/runs/{run_id}/territory-cards/revise`
+- `POST /api/v1/runs/{run_id}/territory-cards/add`
+
+### 500 vs 502 error differentiation
+- Updated `parseTerritoryReviewError(...)` in `frontend/src/lib/api/territoryReview.errors.ts` to classify by HTTP status:
+  - `500` -> `invalid_llm_schema` with message `Territory card generation returned invalid data. Please retry.`
+  - `502` -> `ai_unavailable` with message `AI service temporarily unavailable. Please retry.`
+- Route-level revise/add handlers now surface those exact messages in destructive toasts.
+
+### Cache update / invalidation strategy (non-optimistic)
+- `useReviseTerritoryCardMutation(runId)`:
+  - no optimistic `onMutate`
+  - on success: replace only the matching card in `territoryReviewCardsQueryKey(runId)` via `queryClient.setQueryData`
+  - then invalidate exact cards query key for canonical reconciliation
+- `useAddTerritoryCardMutation(runId)`:
+  - no optimistic `onMutate`
+  - on success: append server-returned card to the end of cached cards list via `queryClient.setQueryData`
+  - then invalidate exact cards query key for canonical reconciliation
+
+### Manual QA / verification
+- Executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- Browser click-path QA was not executable in this sandbox session (no interactive browser/backend run loop available here).
+- Local click paths to verify:
+  - Territory Review -> card `Prompt to Revise` -> submit prompt -> confirm per-card overlay while pending -> verify card updates on success / prompt persists on failure.
+  - Territory Review -> `Add New Card` -> submit prompt -> confirm modal stays open with `Generating territory card...` -> verify appended `User-added` card animates in on success.
+  - With 10+ cards loaded, verify `Add New Card` is disabled with cap messaging.
