@@ -84,6 +84,7 @@ export type StageProgressSSEEvent = BaseSSEEvent<
     run_id: string
     stage_id: number
     progress_pct: number
+    summary?: string | null
   }
 >
 

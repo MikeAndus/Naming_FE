@@ -21,8 +21,8 @@ export interface GateDefinition {
 }
 
 export const STAGE_METADATA: readonly StageMetadata[] = [
-  { stage_id: 0, label: 'Brief Intake', phase: 'phase_1' },
-  { stage_id: 1, label: 'Territory Exploration', phase: 'phase_1' },
+  { stage_id: 0, label: 'Research Snapshot', phase: 'phase_1' },
+  { stage_id: 1, label: 'Territory Card Generation', phase: 'phase_1' },
   { stage_id: 2, label: 'Generation Setup', phase: 'phase_2' },
   { stage_id: 3, label: 'Candidate Expansion', phase: 'phase_2' },
   { stage_id: 4, label: 'First-Pass Screening', phase: 'phase_2' },

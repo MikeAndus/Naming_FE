@@ -289,6 +289,15 @@ export function parseSseEventData(eventType: RunSSEEventType, rawData: string): 
     if (typeof data.progress_pct !== 'number') {
       throw new Error('Invalid stage_progress payload: expected number at progress_pct')
     }
+
+    let summary: string | null | undefined
+    if ('summary' in data) {
+      if (data.summary !== null && typeof data.summary !== 'string') {
+        throw new Error('Invalid stage_progress payload: expected string|null at summary')
+      }
+      summary = data.summary
+    }
+
     return {
       event_type: 'stage_progress',
       timestamp,
@@ -296,6 +305,7 @@ export function parseSseEventData(eventType: RunSSEEventType, rawData: string): 
         run_id,
         stage_id: toStageId(data.stage_id, 'stage_id'),
         progress_pct: data.progress_pct,
+        ...(summary === undefined ? {} : { summary }),
       },
     }
   }

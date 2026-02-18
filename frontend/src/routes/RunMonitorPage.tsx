@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { Textarea } from '@/components/ui/textarea'
 import { useProjectDetailQuery } from '@/features/projects/queries'
 import { useCancelRunMutation, useRetryRunMutation } from '@/features/runs/queries'
 import {
@@ -131,6 +132,24 @@ function getDurationMs(startedAt: string | null, completedAt: string | null, now
   }
 
   return Math.max(0, endTime - startTime)
+}
+
+function clampProgress(progressPct: number): number {
+  if (!Number.isFinite(progressPct)) {
+    return 0
+  }
+
+  return Math.min(100, Math.max(0, Math.round(progressPct)))
+}
+
+function getActiveStageFallbackSummary(stage: StageRow): string {
+  if (stage.stage_id === 0) {
+    return 'Research snapshot is in progress.'
+  }
+  if (stage.stage_id === 1) {
+    return 'Generating territory cards...'
+  }
+  return 'Stage is in progress.'
 }
 
 function parseErrorDetail(errorDetail: string | null): string | null {
@@ -275,9 +294,13 @@ function StageCard({
   const isRunning = stage.status === 'running'
   const isComplete = stage.status === 'complete'
   const isFailed = stage.status === 'failed'
-  const stageDuration = isComplete
-    ? getDurationMs(stage.started_at, stage.completed_at, nowMs)
-    : null
+  const normalizedProgress = clampProgress(stage.progress_pct)
+  const stageDuration = getDurationMs(
+    stage.started_at,
+    stage.status === 'running' ? null : stage.completed_at,
+    nowMs,
+  )
+  const summary = stage.summary?.trim() ?? ''
 
   return (
     <motion.article
@@ -305,26 +328,20 @@ function StageCard({
         </AnimatePresence>
       </div>
 
-      <AnimatePresence initial={false}>
-        {isRunning ? (
-          <motion.div
-            animate={{ opacity: 1, height: 'auto' }}
-            className="mt-3"
-            exit={{ opacity: 0, height: 0 }}
-            initial={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Progress value={stage.progress_pct} />
-            <p className="mt-1 text-xs text-muted-foreground">{stage.progress_pct}%</p>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      {isComplete ? (
-        <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-          <p>Elapsed: {formatDuration(stageDuration)}</p>
-          {stage.summary ? <p>{stage.summary}</p> : null}
+      {!isPending ? (
+        <div className="mt-3 space-y-1">
+          <Progress value={normalizedProgress} />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <p>{normalizedProgress}%</p>
+            <p>Elapsed: {formatDuration(stageDuration)}</p>
+          </div>
         </div>
+      ) : (
+        <p className="mt-3 text-xs text-muted-foreground">Elapsed: {formatDuration(stageDuration)}</p>
+      )}
+
+      {(isRunning || isComplete || isFailed) && summary ? (
+        <p className="mt-2 text-sm text-muted-foreground">{summary}</p>
       ) : null}
 
       <AnimatePresence initial={false}>
@@ -358,6 +375,32 @@ function GateCard({ active, label }: { active: boolean; label: string }) {
         {active ? <Badge variant="secondary">Active</Badge> : <Badge variant="outline">Waiting</Badge>}
       </div>
     </motion.article>
+  )
+}
+
+function ActiveStageSummaryCard({ stage }: { stage: StageRow }) {
+  const summary = stage.summary?.trim() || getActiveStageFallbackSummary(stage)
+
+  return (
+    <div className="rounded-lg border bg-background p-4">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">Active stage summary</p>
+      <p className="mt-1 text-sm font-semibold">
+        Stage {stage.stage_id}: {stage.label}
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">{summary}</p>
+    </div>
+  )
+}
+
+function TerritoryReviewPausedCard() {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-4 text-amber-900">
+      <p className="text-sm font-semibold">Gate reached: Territory Review</p>
+      <p className="mt-2 text-sm">
+        Stage 1 is complete. This run is paused at the Territory Review gate until Phase 5 review
+        tools are available.
+      </p>
+    </div>
   )
 }
 
@@ -435,6 +478,23 @@ export function RunMonitorPage() {
     return null
   }, [stageRows])
 
+  const activeStage = (() => {
+    const runningStage = stageRows.find((stage) => stage.status === 'running')
+    if (runningStage) {
+      return runningStage
+    }
+
+    if (runStatus?.state === 'territory_review') {
+      return stageRows[1] ?? null
+    }
+
+    if (runStatus?.current_stage !== null && runStatus?.current_stage !== undefined) {
+      return stageRows[runStatus.current_stage] ?? null
+    }
+
+    return null
+  })()
+
   const timelineByPhase = useMemo(() => {
     const rowsByPhase = new Map<string, TimelineRow[]>()
 
@@ -467,9 +527,13 @@ export function RunMonitorPage() {
 
   const runErrorDetail = parseErrorDetail(runStatus?.error_detail ?? null)
   const failedStageMessage = getFailedStageMessage(failedStage, runErrorDetail)
+  const failureDetailText =
+    failedStageMessage?.trim() ||
+    getErrorMessage(runStatus?.error_detail, 'Run failed. Retry to continue from the last checkpoint.')
   const isCancelled = isCancelledRun(runStatus?.progress ?? null)
-  const canRetry = runStatus?.state === 'failed' && !isCancelled && Boolean(failedStage)
+  const canRetry = runStatus?.state === 'failed' && !isCancelled
   const canCancel = Boolean(latestRunId) && (runStatus ? !isTerminalRunState(runStatus.state) : false)
+  const showTerritoryReviewPaused = runStatus?.state === 'territory_review'
 
   const elapsedMs = getDurationMs(
     runStatus?.started_at ?? null,
@@ -484,6 +548,69 @@ export function RunMonitorPage() {
       : versionId
         ? `v${versionId.slice(0, 8)}`
         : 'Version'
+
+  const handleCancelConfirm = () => {
+    if (!latestRunId) {
+      return
+    }
+
+    cancelMutation.mutate(
+      {
+        runId: latestRunId,
+        projectId,
+        versionId,
+      },
+      {
+        onError: (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to cancel run',
+            description: getErrorMessage(error, 'Please try again.'),
+          })
+        },
+        onSuccess: () => {
+          toast({
+            title: 'Cancel requested',
+            description: 'The run is being cancelled.',
+          })
+        },
+        onSettled: () => {
+          setCancelDialogOpen(false)
+          startRunProgress()
+        },
+      },
+    )
+  }
+
+  const handleRetry = () => {
+    if (!latestRunId) {
+      return
+    }
+
+    retryMutation.mutate(
+      {
+        runId: latestRunId,
+        projectId,
+        versionId,
+      },
+      {
+        onError: (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to retry run',
+            description: getErrorMessage(error, 'Please try again.'),
+          })
+        },
+        onSuccess: (retriedRun) => {
+          startRunProgress()
+          toast({
+            title: 'Retry started',
+            description: `Resumed run ${retriedRun.id}.`,
+          })
+        },
+      },
+    )
+  }
 
   if (!projectId || !versionId) {
     return (
@@ -589,16 +716,16 @@ export function RunMonitorPage() {
           </div>
         </div>
 
-      <RunActionBar
-        backHref={`/projects/${projectId}/versions/${versionId}`}
-        canCancel={false}
-        showRetry={false}
-        retryDisabled
-        cancelDialogOpen={cancelDialogOpen}
-        cancelLabel="Cancel Run"
-        onCancelConfirm={() => undefined}
-        onCancelDialogOpenChange={setCancelDialogOpen}
-        onRetry={() => undefined}
+        <RunActionBar
+          backHref={`/projects/${projectId}/versions/${versionId}`}
+          canCancel={false}
+          showRetry={false}
+          retryDisabled
+          cancelDialogOpen={cancelDialogOpen}
+          cancelLabel="Cancel Run"
+          onCancelConfirm={() => undefined}
+          onCancelDialogOpenChange={setCancelDialogOpen}
+          onRetry={() => undefined}
           retryLabel="Retry"
         />
       </section>
@@ -662,6 +789,42 @@ export function RunMonitorPage() {
 
       {runStatus ? (
         <div className="space-y-6">
+          {activeStage ? <ActiveStageSummaryCard stage={activeStage} /> : null}
+
+          {showTerritoryReviewPaused ? <TerritoryReviewPausedCard /> : null}
+
+          {runStatus.state === 'failed' ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-5">
+              <p className="text-sm font-semibold text-destructive">
+                {failedStage ? `Stage ${failedStage.stage_id} failed` : 'Run failed'}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Review the error below and retry to continue from the last failed checkpoint.
+              </p>
+              <Textarea
+                className="mt-3 min-h-24 font-mono text-xs"
+                readOnly
+                value={failureDetailText}
+              />
+              {canRetry || retryMutation.isPending ? (
+                <div className="mt-4">
+                  <Button
+                    disabled={retryMutation.isPending}
+                    onClick={handleRetry}
+                    type="button"
+                    variant="secondary"
+                  >
+                    {retryMutation.isPending
+                      ? 'Retrying...'
+                      : failedStage
+                        ? `Retry from Stage ${failedStage.stage_id}`
+                        : 'Retry'}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {PHASE_HEADERS.map((phaseHeader) => (
             <section className="space-y-3" key={phaseHeader.phase}>
               <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
@@ -720,67 +883,9 @@ export function RunMonitorPage() {
         retryDisabled={retryMutation.isPending}
         cancelDialogOpen={cancelDialogOpen}
         cancelLabel={cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
-        onCancelConfirm={() => {
-          if (!latestRunId) {
-            return
-          }
-
-          cancelMutation.mutate(
-            {
-              runId: latestRunId,
-              projectId,
-              versionId,
-            },
-            {
-            onError: (error) => {
-              toast({
-                variant: 'destructive',
-                title: 'Failed to cancel run',
-                description: getErrorMessage(error, 'Please try again.'),
-              })
-            },
-            onSuccess: () => {
-              toast({
-                title: 'Cancel requested',
-                description: 'The run is being cancelled.',
-              })
-            },
-            onSettled: () => {
-              setCancelDialogOpen(false)
-              startRunProgress()
-            },
-            },
-          )
-        }}
+        onCancelConfirm={handleCancelConfirm}
         onCancelDialogOpenChange={setCancelDialogOpen}
-        onRetry={() => {
-          if (!latestRunId) {
-            return
-          }
-          retryMutation.mutate(
-            {
-              runId: latestRunId,
-              projectId,
-              versionId,
-            },
-            {
-              onError: (error) => {
-                toast({
-                  variant: 'destructive',
-                  title: 'Failed to retry run',
-                  description: getErrorMessage(error, 'Please try again.'),
-                })
-              },
-              onSuccess: (retriedRun) => {
-                startRunProgress()
-                toast({
-                  title: 'Retry started',
-                  description: `Resumed run ${retriedRun.id}.`,
-                })
-              },
-            },
-          )
-        }}
+        onRetry={handleRetry}
         retryLabel={
           retryMutation.isPending
             ? 'Retrying...'
@@ -790,11 +895,6 @@ export function RunMonitorPage() {
         }
       />
 
-      {runStatus?.state === 'failed' && failedStage ? (
-        <p className="text-xs text-muted-foreground">
-          Latest failure at Stage {failedStage.stage_id}: {failedStageMessage}
-        </p>
-      ) : null}
     </section>
   )
 }

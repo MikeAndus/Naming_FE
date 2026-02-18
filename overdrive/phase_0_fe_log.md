@@ -599,3 +599,46 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-18 00:22 GMT - Phase 4 Run Monitor UX: stage progress, gate pause messaging, and failure retry detail
+
+### Files changed
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/lib/api/runs.ts`
+- `frontend/src/features/runs/useRunProgress.ts`
+- `frontend/src/features/runs/stageMetadata.ts`
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Summary of changes
+- Extended existing `stage_progress` event parsing/typing to accept optional `summary` while keeping the same SSE event types/protocol.
+- Updated `useRunProgress` to apply `stage_progress.summary` and `progress_pct` directly to the matching stage checkpoint (no new event types).
+- Updated Stage 0/1 labels in stage metadata to user-facing names aligned to this phase (`Research Snapshot`, `Territory Card Generation`).
+- Reworked Run Monitor rendering to show clearer per-stage progress details:
+  - progress bar + percentage for non-pending stages
+  - elapsed time per stage for running/completed/failed states
+  - stage summary text surfaced on running/completed/failed rows when available
+- Added an `Active stage summary` region that reflects the current running stage and live checkpoint `summary` updates (including Stage 1 `Generated X/Y ...` updates when emitted).
+- Added explicit gate pause messaging when `run_state === 'territory_review'`:
+  - `Gate reached: Territory Review`
+  - run paused notice indicating review UI lands in Phase 5.
+- Added a dedicated failure detail region for failed runs/stages:
+  - clear failed heading
+  - error detail text in read-only textarea
+  - retry action using existing `useRetryRunMutation` semantics.
+- Kept cancel behavior unchanged for active runs, reusing the existing cancel mutation/action bar flow.
+
+### Verification performed
+- Static behavior verification against reducer/UI logic paths:
+  - Stage 0/1 progress bars now consume checkpoint `progress_pct` and render percent text.
+  - Stage 1 active summary now consumes checkpoint `summary` from `stage_progress` events.
+  - Territory gate pause card is conditionally rendered only at `territory_review` state.
+  - Failure region uses existing run/stage error data and existing retry mutation wiring.
+- Build checks executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+
+### Manual test steps / limitations
+- Browser/backend SSE end-to-end observation (including live Stage 0 50->100 updates, Stage 1 per-card increments, and post-failure retry progression) was not fully executable inside this sandbox session because a live backend + interactive browser run were not available here.
+- Elapsed time display precision depends on available `started_at` / `completed_at` timestamps from run checkpoints and updates every second while non-terminal.

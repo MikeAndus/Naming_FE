@@ -133,7 +133,7 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
   }
 
   if (event.event_type === 'stage_progress') {
-    const { stage_id, progress_pct } = event.data
+    const { stage_id, progress_pct, summary } = event.data
     return {
       ...current,
       state: getStageRunState(stage_id) ?? current.state,
@@ -147,6 +147,8 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
         ...stage,
         status: 'running',
         progress_pct,
+        summary: summary === undefined ? stage.summary : summary,
+        started_at: stage.started_at ?? event.timestamp,
       })),
     }
   }
