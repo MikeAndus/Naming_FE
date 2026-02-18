@@ -1,6 +1,7 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useState, useSyncExternalStore } from 'react'
 import { Loader2 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
@@ -22,17 +23,29 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useProjectDetailQuery } from '@/features/projects/queries'
-import { useRunStatusQuery } from '@/features/runs/queries'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { projectDetailQueryKey, useProjectDetailQuery } from '@/features/projects/queries'
+import { runStatusQueryKey, useRunStatusQuery } from '@/features/runs/queries'
+import { getTerritoryCardSourceLabel } from '@/features/territoryReview/cardLabels'
 import { TerritoryCardList } from '@/features/territoryReview/components/TerritoryCardList'
 import {
   useAddTerritoryCardMutation,
+  useConfirmTerritoryCardsMutation,
   usePatchTerritoryCardStatusMutation,
   useResearchSnapshot,
   useReviseTerritoryCardMutation,
   useTerritoryCards,
 } from '@/features/territoryReview/queries'
-import { useVersionDetailQuery } from '@/features/versions/queries'
+import {
+  projectVersionsQueryKey,
+  useVersionDetailQuery,
+  versionDetailQueryKey,
+} from '@/features/versions/queries'
 import {
   getErrorMessage,
   TERRITORY_REVIEW_AI_UNAVAILABLE_DETAIL,
@@ -312,9 +325,12 @@ function ResearchSnapshotSection({ snapshot }: { snapshot: ResearchSnapshot | un
 
 export function TerritoryReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const isDesktop = useIsDesktop()
   const [isSnapshotCollapsed, setIsSnapshotCollapsed] = useState(false)
   const [isAddCardDialogOpen, setIsAddCardDialogOpen] = useState(false)
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [addCardPrompt, setAddCardPrompt] = useState('')
   const [addCardInlineError, setAddCardInlineError] = useState<string | null>(null)
 
@@ -334,6 +350,9 @@ export function TerritoryReviewPage() {
     hasTerritoryReviewRun ? runId : undefined,
   )
   const addTerritoryCardMutation = useAddTerritoryCardMutation(
+    hasTerritoryReviewRun ? runId : undefined,
+  )
+  const confirmTerritoryCardsMutation = useConfirmTerritoryCardsMutation(
     hasTerritoryReviewRun ? runId : undefined,
   )
 
@@ -465,6 +484,47 @@ export function TerritoryReviewPage() {
         },
       },
     )
+  }
+
+  const handleConfirmProceed = () => {
+    if (!projectId || !versionId || !runId) {
+      return
+    }
+
+    confirmTerritoryCardsMutation.mutate(undefined, {
+      onSuccess: async () => {
+        setIsConfirmDialogOpen(false)
+
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: runStatusQueryKey(runId),
+            exact: true,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: versionDetailQueryKey(versionId),
+            exact: true,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: projectDetailQueryKey(projectId),
+            exact: true,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: projectVersionsQueryKey(projectId),
+            exact: true,
+          }),
+        ])
+
+        navigate(`/projects/${projectId}/versions/${versionId}/run`)
+      },
+      onError: (error) => {
+        const parsedError = parseTerritoryReviewError(error)
+        toast({
+          variant: 'destructive',
+          title: 'Confirm failed',
+          description: parsedError.message || getErrorMessage(error),
+        })
+      },
+    })
   }
 
   const projectLabel = projectQuery.data?.name?.trim() || 'Project'
@@ -623,6 +683,10 @@ export function TerritoryReviewPage() {
   }
 
   const cards = territoryCardsQuery.data ?? []
+  const approvedCards = cards.filter((card) => card.status === 'approved')
+  const rejectedCount = cards.filter((card) => card.status === 'rejected').length
+  const approvedCount = approvedCards.length
+  const pendingCount = cards.length - approvedCount - rejectedCount
   const showCardsCountSkeleton = isRunResolutionLoading || isCardsInitialLoading
   const hasReachedCardLimit = cards.length >= MAX_TERRITORY_CARDS
   const isAddCardDisabled =
@@ -630,9 +694,16 @@ export function TerritoryReviewPage() {
     isCardsInitialLoading ||
     territoryCardsQuery.isError ||
     hasReachedCardLimit
+  const isConfirmDisabledForApproval = approvedCount < 1
+  const isConfirmDisabled =
+    isConfirmDisabledForApproval ||
+    confirmTerritoryCardsMutation.isPending ||
+    isRunResolutionLoading ||
+    isCardsInitialLoading ||
+    territoryCardsQuery.isError
 
   return (
-    <section className="space-y-4 pb-8">
+    <section className="space-y-4 pb-28">
       <header className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <Breadcrumbs items={breadcrumbItems} />
@@ -768,6 +839,110 @@ export function TerritoryReviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="sticky bottom-0 z-30 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {approvedCount} approved • {rejectedCount} rejected • {pendingCount} pending
+          </p>
+          {isConfirmDisabledForApproval ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex" tabIndex={0}>
+                    <Button
+                      disabled={isConfirmDisabled}
+                      onClick={() => setIsConfirmDialogOpen(true)}
+                      type="button"
+                    >
+                      Confirm &amp; Proceed
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>At least one card must be approved.</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button
+              disabled={isConfirmDisabled}
+              onClick={() => setIsConfirmDialogOpen(true)}
+              type="button"
+            >
+              Confirm &amp; Proceed
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Dialog
+        onOpenChange={(nextOpen) => {
+          if (!confirmTerritoryCardsMutation.isPending) {
+            setIsConfirmDialogOpen(nextOpen)
+          }
+        }}
+        open={isConfirmDialogOpen}
+      >
+        <DialogContent
+          onEscapeKeyDown={(event) => {
+            if (confirmTerritoryCardsMutation.isPending) {
+              event.preventDefault()
+            }
+          }}
+          onPointerDownOutside={(event) => {
+            if (confirmTerritoryCardsMutation.isPending) {
+              event.preventDefault()
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Confirm &amp; Proceed</DialogTitle>
+            <DialogDescription>
+              Proceeding with {approvedCount} approved card(s). {rejectedCount} card(s) rejected
+              and will be excluded from generation. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Approved cards</p>
+            {approvedCards.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No approved cards selected.</p>
+            ) : (
+              <ul className="max-h-44 list-disc space-y-1 overflow-y-auto pl-5 text-sm">
+                {approvedCards.map((card) => (
+                  <li key={card.id}>
+                    {getTerritoryCardSourceLabel(card)} ({card.id.slice(0, 8)})
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              disabled={confirmTerritoryCardsMutation.isPending}
+              onClick={() => setIsConfirmDialogOpen(false)}
+              type="button"
+              variant="outline"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={isConfirmDisabled}
+              onClick={handleConfirmProceed}
+              type="button"
+            >
+              {confirmTerritoryCardsMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Confirming...
+                </>
+              ) : (
+                'Confirm'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         onOpenChange={(nextOpen) => {

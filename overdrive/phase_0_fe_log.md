@@ -943,3 +943,64 @@
   - Territory Review -> card `Prompt to Revise` -> submit prompt -> confirm per-card overlay while pending -> verify card updates on success / prompt persists on failure.
   - Territory Review -> `Add New Card` -> submit prompt -> confirm modal stays open with `Generating territory card...` -> verify appended `User-added` card animates in on success.
   - With 10+ cards loaded, verify `Add New Card` is disabled with cap messaging.
+
+## 2026-02-18 13:57 GMT - Territory Review confirm gate (Confirm & Proceed bar + dialog + mutation flow)
+
+### Files added
+- `frontend/src/components/ui/tooltip.tsx`
+- `frontend/src/features/territoryReview/cardLabels.ts`
+
+### Files updated
+- `frontend/src/routes/TerritoryReviewPage.tsx`
+- `frontend/src/features/territoryReview/queries.ts`
+- `frontend/src/features/territoryReview/components/TerritoryCard.tsx`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+
+### Summary of changes
+- Added a persistent sticky footer ConfirmBar to Territory Review with:
+  - primary action: `Confirm & Proceed`
+  - live status summary: `N approved • M rejected • K pending`
+- Implemented disabled-gate behavior for confirm action:
+  - button stays disabled until at least one approved card exists
+  - disabled-state tooltip text is exactly: `At least one card must be approved.`
+- Added confirm dialog workflow:
+  - copy: `Proceeding with N approved card(s). M card(s) rejected and will be excluded from generation. This cannot be undone.`
+  - verification list of approved card sources
+  - cancel + confirm actions with in-flight loading/disable state
+- Wired confirm mutation submission to existing endpoint integration (`useConfirmTerritoryCardsMutation`) and route-level success flow:
+  - calls `POST /api/v1/runs/{run_id}/territory-cards/confirm`
+  - invalidates run + version + project + versions list queries
+  - navigates to Run Monitor route: `/projects/:projectId/versions/:versionId/run`
+- Failure behavior:
+  - surfaces backend detail via destructive toast (including 409 state-gating / zero-approved detail)
+  - keeps user on Territory Review; dialog remains open for retry.
+
+### Query/mutation wiring notes
+- Added a dedicated mutation key for confirm in `frontend/src/features/territoryReview/queries.ts`:
+  - `['territory-review', 'confirm-cards', runId]`
+- Confirm mutation still suppresses global error toasts and uses route-level toast handling for user messaging.
+
+### Card source list derivation assumption
+- Dialog approved-card list uses the same source-label logic as card headers via shared helper `getTerritoryCardSourceLabel(...)` in `frontend/src/features/territoryReview/cardLabels.ts`:
+  - `User-added` when `source_hotspot_id` is `null`
+  - otherwise `Hotspot: <source_hotspot_id>`.
+
+### Commands run
+- `cd frontend && npm install @radix-ui/react-tooltip`
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
+### Manual verification performed in this environment
+- Verified compile/static behavior for:
+  - sticky ConfirmBar rendering path and disabled/enabled state conditions
+  - confirm dialog copy interpolation and approved-card source list binding
+  - confirm mutation loading guard (disabled actions + blocked close interactions while pending)
+  - success path query invalidation + Run Monitor navigation callsite
+  - error path destructive toast using backend detail message.
+- Browser click validation remains to run locally with backend:
+  - 0 approved -> disabled confirm + tooltip text
+  - >=1 approved -> dialog opens with counts/list
+  - confirm success -> navigation to `/projects/:projectId/versions/:versionId/run`
+  - confirm 409 -> destructive toast with backend detail.

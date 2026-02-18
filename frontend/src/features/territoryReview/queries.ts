@@ -40,6 +40,9 @@ const territoryReviewReviseMutationKey = (runId: string) =>
 const territoryReviewAddMutationKey = (runId: string) =>
   ['territory-review', 'add-card', runId] as const
 
+const territoryReviewConfirmMutationKey = (runId: string) =>
+  ['territory-review', 'confirm-cards', runId] as const
+
 function requireRunId(runId: string | undefined): string {
   if (!runId) {
     throw new Error('runId is required for territory review mutation')
@@ -380,8 +383,11 @@ export function useAddTerritoryCardMutation(runId: string | undefined) {
 
 export function useConfirmTerritoryCardsMutation(runId: string | undefined) {
   const queryClient = useQueryClient()
+  const scopedRunId = runId ?? 'missing-run-id'
+  const mutationKey = territoryReviewConfirmMutationKey(scopedRunId)
 
   return useMutation<ConfirmTerritoryCardsResponse, unknown, void>({
+    mutationKey,
     mutationFn: () => confirmTerritoryCards(requireRunId(runId)),
     meta: {
       suppressGlobalErrorToast: true,

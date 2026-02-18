@@ -27,6 +27,7 @@ import {
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+import { getTerritoryCardSourceLabel } from '@/features/territoryReview/cardLabels'
 import { TerritoryCardStatusBadge } from '@/features/territoryReview/components/TerritoryCardStatusBadge'
 
 interface TerritoryCardProps {
@@ -49,14 +50,6 @@ interface TerritoryCardEditDraft {
   avoidListText: string
   namingStyleRulesText: string
   toneFingerprint: ToneFingerprint
-}
-
-function getSourceLabel(card: TerritoryCardModel): string {
-  if (card.source_hotspot_id === null) {
-    return 'User-added'
-  }
-
-  return `Hotspot: ${card.source_hotspot_id}`
 }
 
 function renderChips(values: string[], emptyText: string) {
@@ -306,7 +299,7 @@ function TerritoryCard({
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <CardTitle className="text-base">{getSourceLabel(card)}</CardTitle>
+              <CardTitle className="text-base">{getTerritoryCardSourceLabel(card)}</CardTitle>
               <CardDescription className="text-xs">
                 card id: <code>{card.id.slice(0, 8)}</code>
               </CardDescription>
