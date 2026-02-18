@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card'
-import type { TerritoryCard as TerritoryCardModel } from '@/lib/api'
+import type { TerritoryCard as TerritoryCardModel, TerritoryCardData } from '@/lib/api'
 
 import { TerritoryCard } from '@/features/territoryReview/components/TerritoryCard'
 
@@ -9,6 +9,7 @@ interface TerritoryCardListProps {
   onApprove: (cardId: string) => void
   onReject: (cardId: string) => void
   onRestore: (cardId: string) => void
+  onSaveCardData: (cardId: string, cardData: TerritoryCardData) => Promise<boolean>
 }
 
 function TerritoryCardList({
@@ -17,6 +18,7 @@ function TerritoryCardList({
   onApprove,
   onReject,
   onRestore,
+  onSaveCardData,
 }: TerritoryCardListProps) {
   if (cards.length === 0) {
     return (
@@ -38,6 +40,7 @@ function TerritoryCardList({
           onApprove={onApprove}
           onReject={onReject}
           onRestore={onRestore}
+          onSaveCardData={onSaveCardData}
         />
       ))}
     </div>

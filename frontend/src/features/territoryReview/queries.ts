@@ -20,6 +20,7 @@ import {
   type ReviseTerritoryCardResponse,
   type ResearchSnapshot,
   type TerritoryCard,
+  type TerritoryCardData,
   type TerritoryCardPatchResponse,
   type TerritoryCardReviewStatus,
 } from '@/lib/api'
@@ -45,9 +46,12 @@ function requireRunId(runId: string | undefined): string {
 }
 
 function applyPatchToCard(card: TerritoryCard, patch: PatchTerritoryCardRequest): TerritoryCard {
+  const statusFromPatch =
+    patch.card_data !== undefined ? (patch.status ?? 'approved') : patch.status
+
   return {
     ...card,
-    ...(patch.status !== undefined ? { status: patch.status } : {}),
+    ...(statusFromPatch !== undefined ? { status: statusFromPatch } : {}),
     ...(patch.card_data !== undefined
       ? {
           card_data: patch.card_data,
@@ -220,6 +224,18 @@ export function usePatchTerritoryCardStatusMutation(runId: string | undefined) {
         {
           cardId,
           patch: { status },
+        },
+        options,
+      ),
+    mutateCardData: (
+      cardId: string,
+      cardData: TerritoryCardData,
+      options?: Parameters<typeof patchMutation.mutate>[1],
+    ) =>
+      patchMutation.mutate(
+        {
+          cardId,
+          patch: { card_data: cardData },
         },
         options,
       ),

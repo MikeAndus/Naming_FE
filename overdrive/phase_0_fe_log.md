@@ -836,3 +836,54 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-18 13:25 GMT - Territory Review human override edit mode (full card_data inline edit)
+
+### Files added
+- None
+
+### Files updated
+- `frontend/src/features/territoryReview/components/TerritoryCard.tsx`
+- `frontend/src/features/territoryReview/components/TerritoryCardList.tsx`
+- `frontend/src/features/territoryReview/queries.ts`
+- `frontend/src/routes/TerritoryReviewPage.tsx`
+
+### Summary
+- Added inline **Edit** mode per territory card for full `TerritoryCardData` human override path.
+- Edit mode now supports all fields:
+  - `metaphor_fields`, `imagery_nouns`, `action_verbs`, `avoid_list`, `naming_style_rules` via dense Textareas (one item per line)
+  - `tone_fingerprint.playful|modern|premium|bold` via 1-5 Sliders
+- Added `Save` and `Cancel` controls in edit mode:
+  - `Save` sends PATCH with `{ card_data: ... }`
+  - `Cancel` discards local draft and exits edit mode with no request
+- Non-edit status-only actions (approve/reject/restore) remain intact.
+
+### Draft representation + conversion
+- Card-local typed draft state in `TerritoryCard.tsx`:
+  - list fields stored as newline-delimited strings
+  - tone fingerprint stored as typed slider values
+- Deterministic conversion on save:
+  - `split('\n') -> trim -> filter(Boolean)` for list fields
+  - slider values clamped/rounded to integer range 1..5
+  - output shape strictly matches `TerritoryCardData`
+
+### Error handling and draft preservation
+- Save errors (422/409/other) show destructive toast using existing territory-review error parsing.
+- On save failure:
+  - card remains in edit mode
+  - user draft is preserved for retry
+- Draft is only discarded on explicit `Cancel` (or replaced after successful save flow and re-entry).
+
+### Query/cache behavior
+- Extended patch wrapper hook with `mutateCardData(...)`:
+  - `frontend/src/features/territoryReview/queries.ts`
+- Reuses existing optimistic patch flow:
+  - immediate optimistic card update (`onMutate`)
+  - rollback on error (`onError`)
+  - invalidate/refetch on settle (`onSettled`)
+- For human override optimistic behavior, local patch logic now treats `card_data` patch as approved status (`status: approved`) to align with backend semantics.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

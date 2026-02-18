@@ -26,6 +26,7 @@ import {
   type ParsedTerritoryReviewError,
   parseTerritoryReviewError,
   type ResearchSnapshot,
+  type TerritoryCardData,
   type TerritoryCardReviewStatus,
 } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
@@ -330,6 +331,32 @@ export function TerritoryReviewPage() {
     handleStatusUpdate(cardId, 'pending')
   }
 
+  const handleSaveCardData = (
+    cardId: string,
+    cardData: TerritoryCardData,
+  ): Promise<boolean> => {
+    return new Promise((resolve) => {
+      patchTerritoryCardMutation.mutateCardData(
+        cardId,
+        cardData,
+        {
+          onSuccess: () => {
+            resolve(true)
+          },
+          onError: (error) => {
+            const parsedError = parseTerritoryReviewError(error)
+            toast({
+              variant: 'destructive',
+              title: 'Human override save failed',
+              description: getStatusMutationErrorMessage(parsedError),
+            })
+            resolve(false)
+          },
+        },
+      )
+    })
+  }
+
   const projectLabel = projectQuery.data?.name?.trim() || 'Project'
   const versionLabel =
     versionQuery.data?.version_number !== undefined
@@ -592,6 +619,7 @@ export function TerritoryReviewPage() {
                 onApprove={handleApproveCard}
                 onReject={handleRejectCard}
                 onRestore={handleRestoreCard}
+                onSaveCardData={handleSaveCardData}
               />
             ) : null}
           </CardContent>

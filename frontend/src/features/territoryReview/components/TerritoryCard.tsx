@@ -1,3 +1,5 @@
+import { useMemo, useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -7,8 +9,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Slider } from '@/components/ui/slider'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  type TerritoryCard as TerritoryCardModel,
+  type TerritoryCardData,
+  type ToneFingerprint,
+} from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { TerritoryCard as TerritoryCardModel } from '@/lib/api'
 
 import { TerritoryCardStatusBadge } from '@/features/territoryReview/components/TerritoryCardStatusBadge'
 
@@ -18,6 +26,18 @@ interface TerritoryCardProps {
   onApprove: (cardId: string) => void
   onReject: (cardId: string) => void
   onRestore: (cardId: string) => void
+  onSaveCardData: (cardId: string, cardData: TerritoryCardData) => Promise<boolean>
+}
+
+type ToneSliderValue = TerritoryCardData['tone_fingerprint']['playful']
+
+interface TerritoryCardEditDraft {
+  metaphorFieldsText: string
+  imageryNounsText: string
+  actionVerbsText: string
+  avoidListText: string
+  namingStyleRulesText: string
+  toneFingerprint: ToneFingerprint
 }
 
 function getSourceLabel(card: TerritoryCardModel): string {
@@ -69,20 +89,188 @@ function ToneScaleRow({ label, value }: { label: string; value: number }) {
   )
 }
 
+function splitDraftLines(value: string): string[] {
+  return value
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function joinDraftLines(values: string[]): string {
+  return values.join('\n')
+}
+
+function toDraft(cardData: TerritoryCardData): TerritoryCardEditDraft {
+  return {
+    metaphorFieldsText: joinDraftLines(cardData.metaphor_fields),
+    imageryNounsText: joinDraftLines(cardData.imagery_nouns),
+    actionVerbsText: joinDraftLines(cardData.action_verbs),
+    avoidListText: joinDraftLines(cardData.avoid_list),
+    namingStyleRulesText: joinDraftLines(cardData.naming_style_rules),
+    toneFingerprint: {
+      playful: cardData.tone_fingerprint.playful,
+      modern: cardData.tone_fingerprint.modern,
+      premium: cardData.tone_fingerprint.premium,
+      bold: cardData.tone_fingerprint.bold,
+    },
+  }
+}
+
+function clampSliderValue(value: number): ToneSliderValue {
+  if (value <= 1) {
+    return 1
+  }
+  if (value >= 5) {
+    return 5
+  }
+
+  return Math.round(value) as ToneSliderValue
+}
+
+function toCardDataDraft(draft: TerritoryCardEditDraft): TerritoryCardData {
+  return {
+    metaphor_fields: splitDraftLines(draft.metaphorFieldsText),
+    imagery_nouns: splitDraftLines(draft.imageryNounsText),
+    action_verbs: splitDraftLines(draft.actionVerbsText),
+    tone_fingerprint: {
+      playful: clampSliderValue(draft.toneFingerprint.playful),
+      modern: clampSliderValue(draft.toneFingerprint.modern),
+      premium: clampSliderValue(draft.toneFingerprint.premium),
+      bold: clampSliderValue(draft.toneFingerprint.bold),
+    },
+    avoid_list: splitDraftLines(draft.avoidListText),
+    naming_style_rules: splitDraftLines(draft.namingStyleRulesText),
+  }
+}
+
+function arrayEquals(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false
+  }
+
+  return a.every((item, index) => item === b[index])
+}
+
+function isToneFingerprintEqual(a: ToneFingerprint, b: ToneFingerprint): boolean {
+  return (
+    a.playful === b.playful &&
+    a.modern === b.modern &&
+    a.premium === b.premium &&
+    a.bold === b.bold
+  )
+}
+
+function isCardDataEqual(a: TerritoryCardData, b: TerritoryCardData): boolean {
+  return (
+    arrayEquals(a.metaphor_fields, b.metaphor_fields) &&
+    arrayEquals(a.imagery_nouns, b.imagery_nouns) &&
+    arrayEquals(a.action_verbs, b.action_verbs) &&
+    isToneFingerprintEqual(a.tone_fingerprint, b.tone_fingerprint) &&
+    arrayEquals(a.avoid_list, b.avoid_list) &&
+    arrayEquals(a.naming_style_rules, b.naming_style_rules)
+  )
+}
+
+function ToneSliderField({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled: boolean
+  label: string
+  onChange: (value: ToneSliderValue) => void
+  value: ToneSliderValue
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <span className="text-xs font-medium">{value}/5</span>
+      </div>
+      <Slider
+        disabled={disabled}
+        max={5}
+        min={1}
+        onValueChange={(next) => {
+          const nextValue = next[0]
+          if (typeof nextValue === 'number') {
+            onChange(clampSliderValue(nextValue))
+          }
+        }}
+        step={1}
+        value={[value]}
+      />
+    </div>
+  )
+}
+
+function DraftListField({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled: boolean
+  label: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <section className="space-y-1.5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <Textarea
+        className="min-h-[84px] text-xs"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="One item per line"
+        value={value}
+      />
+      <p className="text-[11px] text-muted-foreground">One item per line.</p>
+    </section>
+  )
+}
+
 function TerritoryCard({
   card,
   isPending,
   onApprove,
   onReject,
   onRestore,
+  onSaveCardData,
 }: TerritoryCardProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState<TerritoryCardEditDraft>(() => toDraft(card.card_data))
+
   const isRejected = card.status === 'rejected'
+  const nextCardData = useMemo(() => toCardDataDraft(draft), [draft])
+  const isDraftDirty = useMemo(
+    () => !isCardDataEqual(nextCardData, card.card_data),
+    [card.card_data, nextCardData],
+  )
+
+  const handleCancelEdit = () => {
+    setDraft(toDraft(card.card_data))
+    setIsEditing(false)
+  }
+
+  const handleStartEdit = () => {
+    setDraft(toDraft(card.card_data))
+    setIsEditing(true)
+  }
+
+  const handleSaveEdit = async () => {
+    const wasSaved = await onSaveCardData(card.id, nextCardData)
+    if (wasSaved) {
+      setIsEditing(false)
+    }
+  }
 
   return (
     <Card
       className={cn(
         'border-muted',
-        isRejected && 'bg-muted/30 text-muted-foreground opacity-80',
+        isRejected && !isEditing && 'bg-muted/30 text-muted-foreground opacity-80',
       )}
     >
       <CardHeader className="pb-3">
@@ -98,108 +286,239 @@ function TerritoryCard({
       </CardHeader>
 
       <CardContent className="space-y-4 text-sm">
-        <section className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Metaphor Fields
-          </p>
-          {renderChips(card.card_data.metaphor_fields, 'None')}
-        </section>
+        {!isEditing ? (
+          <>
+            <section className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Metaphor Fields
+              </p>
+              {renderChips(card.card_data.metaphor_fields, 'None')}
+            </section>
 
-        <section className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Imagery Nouns
-          </p>
-          {renderChips(card.card_data.imagery_nouns, 'None')}
-        </section>
+            <section className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Imagery Nouns
+              </p>
+              {renderChips(card.card_data.imagery_nouns, 'None')}
+            </section>
 
-        <section className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Action Verbs
-          </p>
-          {renderChips(card.card_data.action_verbs, 'None')}
-        </section>
+            <section className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Action Verbs
+              </p>
+              {renderChips(card.card_data.action_verbs, 'None')}
+            </section>
 
-        <section className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Tone Fingerprint
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <ToneScaleRow label="Playful" value={card.card_data.tone_fingerprint.playful} />
-            <ToneScaleRow label="Modern" value={card.card_data.tone_fingerprint.modern} />
-            <ToneScaleRow label="Premium" value={card.card_data.tone_fingerprint.premium} />
-            <ToneScaleRow label="Bold" value={card.card_data.tone_fingerprint.bold} />
-          </div>
-        </section>
+            <section className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Tone Fingerprint
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <ToneScaleRow label="Playful" value={card.card_data.tone_fingerprint.playful} />
+                <ToneScaleRow label="Modern" value={card.card_data.tone_fingerprint.modern} />
+                <ToneScaleRow label="Premium" value={card.card_data.tone_fingerprint.premium} />
+                <ToneScaleRow label="Bold" value={card.card_data.tone_fingerprint.bold} />
+              </div>
+            </section>
 
-        <section className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Avoid List
-          </p>
-          {renderChips(card.card_data.avoid_list, 'None')}
-        </section>
+            <section className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Avoid List
+              </p>
+              {renderChips(card.card_data.avoid_list, 'None')}
+            </section>
 
-        <section className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Naming Style Rules
-          </p>
-          {card.card_data.naming_style_rules.length === 0 ? (
-            <p className="text-xs text-muted-foreground">None</p>
-          ) : (
-            <ul className="list-disc space-y-1 pl-5 text-xs">
-              {card.card_data.naming_style_rules.map((rule, index) => (
-                <li key={`${rule}-${index}`}>{rule}</li>
-              ))}
-            </ul>
-          )}
-        </section>
+            <section className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Naming Style Rules
+              </p>
+              {card.card_data.naming_style_rules.length === 0 ? (
+                <p className="text-xs text-muted-foreground">None</p>
+              ) : (
+                <ul className="list-disc space-y-1 pl-5 text-xs">
+                  {card.card_data.naming_style_rules.map((rule, index) => (
+                    <li key={`${rule}-${index}`}>{rule}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        ) : (
+          <>
+            <DraftListField
+              disabled={isPending}
+              label="Metaphor Fields"
+              onChange={(value) => setDraft((current) => ({ ...current, metaphorFieldsText: value }))}
+              value={draft.metaphorFieldsText}
+            />
+
+            <DraftListField
+              disabled={isPending}
+              label="Imagery Nouns"
+              onChange={(value) => setDraft((current) => ({ ...current, imageryNounsText: value }))}
+              value={draft.imageryNounsText}
+            />
+
+            <DraftListField
+              disabled={isPending}
+              label="Action Verbs"
+              onChange={(value) => setDraft((current) => ({ ...current, actionVerbsText: value }))}
+              value={draft.actionVerbsText}
+            />
+
+            <section className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Tone Fingerprint
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ToneSliderField
+                  disabled={isPending}
+                  label="Playful"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      toneFingerprint: { ...current.toneFingerprint, playful: value },
+                    }))
+                  }
+                  value={draft.toneFingerprint.playful}
+                />
+                <ToneSliderField
+                  disabled={isPending}
+                  label="Modern"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      toneFingerprint: { ...current.toneFingerprint, modern: value },
+                    }))
+                  }
+                  value={draft.toneFingerprint.modern}
+                />
+                <ToneSliderField
+                  disabled={isPending}
+                  label="Premium"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      toneFingerprint: { ...current.toneFingerprint, premium: value },
+                    }))
+                  }
+                  value={draft.toneFingerprint.premium}
+                />
+                <ToneSliderField
+                  disabled={isPending}
+                  label="Bold"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      toneFingerprint: { ...current.toneFingerprint, bold: value },
+                    }))
+                  }
+                  value={draft.toneFingerprint.bold}
+                />
+              </div>
+            </section>
+
+            <DraftListField
+              disabled={isPending}
+              label="Avoid List"
+              onChange={(value) => setDraft((current) => ({ ...current, avoidListText: value }))}
+              value={draft.avoidListText}
+            />
+
+            <DraftListField
+              disabled={isPending}
+              label="Naming Style Rules"
+              onChange={(value) =>
+                setDraft((current) => ({ ...current, namingStyleRulesText: value }))
+              }
+              value={draft.namingStyleRulesText}
+            />
+          </>
+        )}
       </CardContent>
 
       <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
-        {card.status === 'pending' ? (
+        {!isEditing ? (
           <>
+            {card.status === 'pending' ? (
+              <>
+                <Button
+                  disabled={isPending}
+                  onClick={() => onApprove(card.id)}
+                  size="sm"
+                  type="button"
+                >
+                  {isPending ? 'Saving...' : 'Approve'}
+                </Button>
+                <Button
+                  disabled={isPending}
+                  onClick={() => onReject(card.id)}
+                  size="sm"
+                  type="button"
+                  variant="destructive"
+                >
+                  {isPending ? 'Saving...' : 'Reject'}
+                </Button>
+              </>
+            ) : null}
+
+            {card.status === 'approved' ? (
+              <Button
+                disabled={isPending}
+                onClick={() => onReject(card.id)}
+                size="sm"
+                type="button"
+                variant="destructive"
+              >
+                {isPending ? 'Saving...' : 'Reject'}
+              </Button>
+            ) : null}
+
+            {card.status === 'rejected' ? (
+              <Button
+                disabled={isPending}
+                onClick={() => onRestore(card.id)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {isPending ? 'Saving...' : 'Restore'}
+              </Button>
+            ) : null}
+
             <Button
               disabled={isPending}
-              onClick={() => onApprove(card.id)}
+              onClick={handleStartEdit}
               size="sm"
               type="button"
+              variant="secondary"
             >
-              {isPending ? 'Saving...' : 'Approve'}
-            </Button>
-            <Button
-              disabled={isPending}
-              onClick={() => onReject(card.id)}
-              size="sm"
-              type="button"
-              variant="destructive"
-            >
-              {isPending ? 'Saving...' : 'Reject'}
+              Edit
             </Button>
           </>
-        ) : null}
-
-        {card.status === 'approved' ? (
-          <Button
-            disabled={isPending}
-            onClick={() => onReject(card.id)}
-            size="sm"
-            type="button"
-            variant="destructive"
-          >
-            {isPending ? 'Saving...' : 'Reject'}
-          </Button>
-        ) : null}
-
-        {card.status === 'rejected' ? (
-          <Button
-            disabled={isPending}
-            onClick={() => onRestore(card.id)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {isPending ? 'Saving...' : 'Restore'}
-          </Button>
-        ) : null}
+        ) : (
+          <>
+            <Button
+              disabled={isPending || !isDraftDirty}
+              onClick={() => {
+                void handleSaveEdit()
+              }}
+              size="sm"
+              type="button"
+            >
+              {isPending ? 'Saving...' : 'Save'}
+            </Button>
+            <Button
+              disabled={isPending}
+              onClick={handleCancelEdit}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Cancel
+            </Button>
+          </>
+        )}
       </CardFooter>
     </Card>
   )
