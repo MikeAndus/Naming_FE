@@ -24,7 +24,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 
 type SectionKey = 'brief' | 'hotspots' | 'dials'
-type SaveReason = 'autosave' | 'blur' | 'manual' | 'unmount'
+type SaveReason = 'autosave' | 'blur' | 'manual' | 'pre-run' | 'unmount'
 
 type PriceTier = 'value' | 'mid' | 'premium'
 type Channel = 'dtc' | 'retail' | 'amazon' | 'b2b' | 'mixed'
@@ -377,7 +377,7 @@ function serializeBrief(brief: BriefState): Record<string, unknown> {
   if (CHANNELS.includes(brief.channel as Channel)) {
     audience.channel = brief.channel
   }
-  audience.tone_sliders = {
+  audience.tone = {
     playful_serious: brief.playful_serious,
     modern_heritage: brief.modern_heritage,
     mass_premium: brief.mass_premium,
@@ -750,7 +750,11 @@ export function VersionBuilderPage() {
   const dirtySectionsRef = useRef(dirtySections)
   const canEditRef = useRef(false)
   const saveDirtySectionsRef = useRef<
-    (sections?: SectionKey[], reason?: SaveReason) => Promise<{ savedCount: number; hadFailure: boolean }>
+    (
+      sections?: SectionKey[],
+      reason?: SaveReason,
+      force?: boolean,
+    ) => Promise<{ savedCount: number; hadFailure: boolean }>
   >(async () => ({ savedCount: 0, hadFailure: false }))
 
   const hasDirty = useMemo(
@@ -910,12 +914,16 @@ export function VersionBuilderPage() {
   )
 
   const saveSection = useCallback(
-    async (section: SectionKey, reason: SaveReason): Promise<'saved' | 'skipped' | 'failed'> => {
+    async (
+      section: SectionKey,
+      reason: SaveReason,
+      force = false,
+    ): Promise<'saved' | 'skipped' | 'failed'> => {
       if (!versionId || (!canEdit && !canEditRef.current)) {
         return 'skipped'
       }
 
-      if (!dirtySectionsRef.current[section]) {
+      if (!force && !dirtySectionsRef.current[section]) {
         return 'skipped'
       }
 
@@ -1011,12 +1019,14 @@ export function VersionBuilderPage() {
   )
 
   const saveDirtySections = useCallback(
-    async (sections?: SectionKey[], reason: SaveReason = 'manual') => {
+    async (sections?: SectionKey[], reason: SaveReason = 'manual', force = false) => {
       if (isSavingRef.current || (!canEdit && !canEditRef.current)) {
         return { savedCount: 0, hadFailure: false }
       }
 
-      const targets = (sections ?? SECTION_ORDER).filter((section) => dirtySectionsRef.current[section])
+      const targets = force
+        ? (sections ?? SECTION_ORDER)
+        : (sections ?? SECTION_ORDER).filter((section) => dirtySectionsRef.current[section])
       if (targets.length === 0) {
         return { savedCount: 0, hadFailure: false }
       }
@@ -1026,7 +1036,7 @@ export function VersionBuilderPage() {
       let hadFailure = false
 
       for (const section of targets) {
-        const result = await saveSection(section, reason)
+        const result = await saveSection(section, reason, force)
         if (result === 'saved') {
           savedCount += 1
         }
@@ -1069,7 +1079,7 @@ export function VersionBuilderPage() {
       return
     }
 
-    const saveResult = await saveDirtySections(undefined, 'manual')
+    const saveResult = await saveDirtySections(SECTION_ORDER, 'pre-run', true)
     if (saveResult.hadFailure) {
       return
     }

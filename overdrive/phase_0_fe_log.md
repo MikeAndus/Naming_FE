@@ -1143,3 +1143,33 @@
 ### Manual verification to run locally
 - Edit Brief only, save, and confirm payload is nested under top-level `brief` (no flat root brief fields).
 - Start Run with intentionally invalid brief fields and confirm inline errors appear on the corresponding inputs via remapped nested 422 paths.
+
+## 2026-02-18 21:12 GMT - Start Run 422 resolution (legacy brief cleanup + pre-run force-save)
+
+### Files changed
+- `frontend/src/routes/VersionBuilderPage.tsx`
+- `../Naming_BE/api/services/version_service.py`
+- `overdrive/phase_0_fe_log.md`
+
+### What changed
+- Updated Version Builder Start Run flow to force-save all three sections before `POST /runs/start`, even when no section is currently dirty:
+  - `saveDirtySections(SECTION_ORDER, 'pre-run', true)`
+  - Added `force` plumbing through `saveDirtySections` and `saveSection`.
+- Updated Brief serialization key from `brief.audience.tone_sliders` to backend-required `brief.audience.tone`.
+- Updated backend version patch behavior in `Naming_BE` to replace section payloads (`brief`, `hotspots`, `dials`) instead of merging JSON objects.
+  - This removes stale legacy flat keys (for example `brief.what_it_is`, `brief.channel`) that were otherwise retained and failed run-start validation with `extra_forbidden`.
+
+### Root cause summary
+- Run-start validates persisted DB payload shape against strict Pydantic schemas (`extra='forbid'`).
+- Historic flat brief keys remained in DB due merge-on-patch behavior.
+- Even with nested FE payloads, stale keys persisted until backend patch switched to replace semantics.
+
+### Verification
+- FE checks:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- BE checks:
+  - `cd ../Naming_BE && python3 -m py_compile api/services/version_service.py` (pass)
+- Manual runtime:
+  - User confirmed Start Run now succeeds (no recurring 422).
