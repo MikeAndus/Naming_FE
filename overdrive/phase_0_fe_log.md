@@ -741,3 +741,54 @@
 ### Deviations / follow-ups
 - Backend `GET /runs/{run_id}/territory-cards` response schema currently exposes `status` (mapped from model `review_status`) and does **not** include card timestamps in the response model; FE types reflect the backend response model as implemented.
 - Full Territory Review interaction UI (approve/reject/edit/revise/add/confirm controls) intentionally remains out of scope for this node; data-access hooks are in place for next phase UI work.
+
+## 2026-02-18 13:01 GMT - Territory Review core shell: split layout + read-only snapshot renderer
+
+### Files added
+- `frontend/src/components/ui/skeleton.tsx`
+
+### Files updated
+- `frontend/src/routes/TerritoryReviewPage.tsx`
+
+### Summary of UI changes
+- Replaced debug-style Territory Review output with a desktop-only, two-region split shell:
+  - Left panel (`~30%`): `Research Snapshot` (read-only)
+  - Right panel (`~70%`): `Territory Cards` read-only list/grid
+- Added session-local collapse behavior for the snapshot panel via React state (`useState`):
+  - default expanded
+  - `Collapse snapshot` / `Expand snapshot` toggle in header
+  - when collapsed, cards region expands to full width
+- Header now renders:
+  - breadcrumbs: `Dashboard -> Project -> vN -> Territory Review`
+  - version/run state badges from existing queries
+  - badge skeleton placeholders during loading to avoid flashing unknown state labels
+
+### Research Snapshot rendering
+- Implemented structured, read-only sections (from existing `ResearchSnapshot` type):
+  - `Competitive Clusters` as bullets
+  - `Dominant Patterns` with `Prefixes` and `Suffixes` sublists
+  - `Crowded Terms to Avoid` as chips/badges
+  - `Whitespace Hypotheses` as numbered list with rationale (and risk when present)
+- Empty/missing section data now renders `None found.` placeholders instead of hiding sections.
+
+### Loading / error / retry behavior
+- Added panel-level loading skeletons:
+  - left panel snapshot skeleton blocks
+  - right panel territory card skeleton cards
+- Added inline panel-level error cards with retry buttons:
+  - `Couldn’t load research snapshot` + `refetch()`
+  - `Couldn’t load territory cards` + `refetch()`
+- Error copy uses existing parsing helpers (`parseTerritoryReviewError` + message fallback via `getErrorMessage`).
+- Removed raw JSON debug dumps from main UI; only concise user-facing output remains.
+
+### Cards region (read-only)
+- Added cards header with count badge.
+- Rendered read-only territory cards in a responsive grid:
+  - source label (`User-added` when `source_hotspot_id` is `null`; otherwise `Hotspot card <id>`)
+  - status badge (`pending` / `approved` / `rejected`)
+  - compact `card_data` preview (`metaphor_fields`, `imagery_nouns`, `action_verbs`, tone fingerprint)
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
