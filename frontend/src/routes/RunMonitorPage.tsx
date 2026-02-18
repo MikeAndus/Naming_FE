@@ -392,14 +392,19 @@ function ActiveStageSummaryCard({ stage }: { stage: StageRow }) {
   )
 }
 
-function TerritoryReviewPausedCard() {
+function TerritoryReviewPausedCard({ territoryReviewHref }: { territoryReviewHref: string }) {
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-4 text-amber-900">
       <p className="text-sm font-semibold">Gate reached: Territory Review</p>
       <p className="mt-2 text-sm">
-        Stage 1 is complete. This run is paused at the Territory Review gate until Phase 5 review
-        tools are available.
+        Stage 1 is complete. This run is paused at Territory Review. Review and confirm territory
+        cards to continue to Phase 2.
       </p>
+      <div className="mt-4">
+        <Button asChild type="button">
+          <Link to={territoryReviewHref}>Review Territory Cards</Link>
+        </Button>
+      </div>
     </div>
   )
 }
@@ -791,7 +796,11 @@ export function RunMonitorPage() {
         <div className="space-y-6">
           {activeStage ? <ActiveStageSummaryCard stage={activeStage} /> : null}
 
-          {showTerritoryReviewPaused ? <TerritoryReviewPausedCard /> : null}
+          {showTerritoryReviewPaused ? (
+            <TerritoryReviewPausedCard
+              territoryReviewHref={`/projects/${projectId}/versions/${versionId}/territory-review`}
+            />
+          ) : null}
 
           {runStatus.state === 'failed' ? (
             <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-5">

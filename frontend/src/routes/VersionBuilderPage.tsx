@@ -548,6 +548,7 @@ export function VersionBuilderPage() {
   const isRunActive =
     Boolean(latestRunId) &&
     (runStatusQuery.data ? !isTerminalRunState(runStatusQuery.data.state) : true)
+  const isTerritoryReviewGate = runStatusQuery.data?.state === 'territory_review'
 
   useEffect(() => {
     canEditRef.current = canEdit
@@ -1078,6 +1079,24 @@ export function VersionBuilderPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isTerritoryReviewGate ? (
+          <Card className="border-amber-300 bg-amber-50/70">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-amber-900">Run is waiting on Territory Review</p>
+                <p className="text-sm text-amber-900/90">
+                  Approve/revise cards and confirm to resume the pipeline.
+                </p>
+              </div>
+              <Button asChild type="button">
+                <Link to={`/projects/${projectId}/versions/${versionId}/territory-review`}>
+                  Review Territory Cards
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card onBlurCapture={onSectionBlur('brief')}>
           <CardHeader>

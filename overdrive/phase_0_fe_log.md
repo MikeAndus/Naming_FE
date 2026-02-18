@@ -1004,3 +1004,43 @@
   - >=1 approved -> dialog opens with counts/list
   - confirm success -> navigation to `/projects/:projectId/versions/:versionId/run`
   - confirm 409 -> destructive toast with backend detail.
+
+## 2026-02-18 14:09 GMT - Persistent Territory Review discoverability in Run Monitor + Version Builder
+
+### What changed
+- Added a persistent Run Monitor gate card CTA when `run.state === 'territory_review'`:
+  - CTA label: `Review Territory Cards`
+  - route target: `/projects/:projectId/versions/:versionId/territory-review`
+- Added a Version Builder banner when the latest run is gated in `territory_review`:
+  - waiting-state copy + clear CTA to Territory Review
+  - CTA label: `Review Territory Cards`
+- Kept visibility logic fully run-state-driven from existing data sources:
+  - Run Monitor uses `runStatus.state` from `useRunProgress`
+  - Version Builder uses `runStatusQuery.data?.state` from existing `useRunStatusQuery`
+- No SSE/polling behavior changes were made.
+
+### Files touched
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `frontend/src/routes/VersionBuilderPage.tsx`
+
+### Route/path confirmation
+- Verified Territory Review route remains registered as:
+  - `/projects/:projectId/versions/:versionId/territory-review`
+  - (`frontend/src/app/router.tsx`)
+- Verified both new entry points link to that exact path.
+
+### Persistence verification
+- Code-path verification performed:
+  - CTA/banner rendering is now a pure function of fetched run state `territory_review` (not transient gate event flags).
+  - This ensures visibility persists across navigation away/back and refresh while backend state remains gated.
+- Local browser persistence checks to run with live backend:
+  1) Open Run Monitor during `territory_review`, confirm gate card visible, click CTA to Territory Review.
+  2) Navigate away from Run Monitor and return; confirm gate card still visible.
+  3) Refresh Run Monitor; confirm gate card still visible.
+  4) Open Version Builder; confirm banner appears while run is `territory_review`.
+  5) After Confirm & Proceed advances run state, verify gate card/banner disappear.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
