@@ -665,3 +665,79 @@
   - `http://127.0.0.1:<port>/projects/123/versions/456/territory-review`
   - Confirm desktop (`>=1024px`) shows header badges + split panes + sticky action region.
   - Confirm tablet/mobile (`<1024px`) shows desktop-only fallback card.
+
+## 2026-02-18 12:49 GMT - Territory Review FE data-access layer + minimal route wiring
+
+### Files added
+- `frontend/src/lib/api/territoryReview.types.ts`
+- `frontend/src/lib/api/territoryReview.ts`
+- `frontend/src/lib/api/territoryReview.errors.ts`
+- `frontend/src/features/territoryReview/queries.ts`
+
+### Files updated
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/routes/TerritoryReviewPage.tsx`
+
+### Backend contract alignment (read from Naming_BE)
+- Routes matched exactly from backend routers:
+  - `GET /api/v1/runs/{run_id}/research-snapshot`
+  - `GET /api/v1/runs/{run_id}/territory-cards`
+  - `PATCH /api/v1/territory-cards/{card_id}` with body `{ status?, card_data? }`
+  - `POST /api/v1/runs/{run_id}/territory-cards/revise` with body `{ card_id, revision_prompt }`
+  - `POST /api/v1/runs/{run_id}/territory-cards/add` with body `{ prompt }`
+  - `POST /api/v1/runs/{run_id}/territory-cards/confirm` returning `{ approved_count }`
+- Typed FE models mirror backend schemas for `ToneFingerprint`, `TerritoryCardData`, territory card list/patch response payloads, and `ResearchSnapshot`.
+- Patch request typing enforces “at least one of `status` or `card_data`” using a discriminated union.
+
+### Query keys and hook layer
+- Added Territory Review query keys scoped by run:
+  - `territoryReviewResearchSnapshotQueryKey(runId)`
+  - `territoryReviewCardsQueryKey(runId)`
+- Added hooks:
+  - `useResearchSnapshot(runId)`
+  - `useTerritoryCards(runId)`
+  - `usePatchTerritoryCardMutation(runId)`
+  - `useReviseTerritoryCardMutation(runId)`
+  - `useAddTerritoryCardMutation(runId)`
+  - `useConfirmTerritoryCardsMutation(runId)`
+
+### Mutation/cache strategy decisions
+- `patch` uses optimistic list updates with rollback on error.
+- `patch` success merges server response into cached list row and then invalidates exact cards list key for canonical reconciliation.
+- `revise` and `add` do not optimistically modify `card_data` (LLM latency expected); they wait for server and then invalidate/refetch cards list.
+- `confirm` invalidates cards + research snapshot queries for the run on success.
+- All Territory Review query/mutation hooks set `meta.suppressGlobalErrorToast = true` so route-level error rendering can own messaging.
+
+### Per-card loading implementation
+- Per-card pending states for `patch` and `revise` are exposed from hooks via:
+  - mutation keys scoped by run id
+  - `useMutationState(... status: 'pending' ...)`
+  - returned helper: `isCardPending(cardId)`
+
+### Territory-specific error parsing
+- Added `parseTerritoryReviewError(error)` returning typed output:
+  - `kind: 'conflict'` for HTTP 409 (state-gating/zero-approved cases)
+  - `kind: 'invalid_llm_schema'` for HTTP 500 + exact detail:
+    - `Territory card generation returned invalid data. Please retry.`
+  - `kind: 'ai_unavailable'` for HTTP 502 + exact detail:
+    - `AI service temporarily unavailable. Please retry.`
+  - fallback `kind: 'unknown'`
+- Parsed object preserves `status` and backend `detail` while reusing existing `getErrorMessage(...)` behavior.
+
+### Route wiring details (`TerritoryReviewPage`)
+- Replaced placeholder content with minimal data-access rendering only.
+- Run resolution uses existing contract already present in FE:
+  - `version.latest_run_id` from `useVersionDetailQuery(versionId)`
+  - `useRunStatusQuery(latest_run_id)`
+  - proceed only when `run.state === 'territory_review'`; otherwise render `No territory review run found`.
+- Desktop gating behavior remains intact.
+- Minimal output now includes loading states, parsed error blocks, cards count, and JSON dumps (`<pre>`) for research snapshot + territory cards.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
+### Deviations / follow-ups
+- Backend `GET /runs/{run_id}/territory-cards` response schema currently exposes `status` (mapped from model `review_status`) and does **not** include card timestamps in the response model; FE types reflect the backend response model as implemented.
+- Full Territory Review interaction UI (approve/reject/edit/revise/add/confirm controls) intentionally remains out of scope for this node; data-access hooks are in place for next phase UI work.
