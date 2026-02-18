@@ -1044,3 +1044,36 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-18 19:14 GMT - Run Monitor Stage 2/3 SSE progress + summary alignment
+
+### Files changed
+- `frontend/src/features/runs/stageMetadata.ts`
+- `frontend/src/features/runs/useRunProgress.ts`
+- `frontend/src/routes/RunMonitorPage.tsx`
+
+### What changed
+- Updated stage label mapping for stage IDs 2 and 3:
+  - `2` -> `Generating candidates...`
+  - `3` -> `Cleaning & deduplicating...`
+- Extended `getStageLabel(...)` normalization so string stage ids like `"2"`/`"stage_2"` resolve correctly.
+- Fixed SSE stage update handling in `useRunProgress` so `stage_started` / `stage_progress` / `stage_completed` upsert missing stage checkpoints instead of only updating pre-existing entries.
+  - This ensures Stage 2/3 rows update even if backend status snapshots initially omit those checkpoints.
+- Updated Run Monitor active-stage summary card to display live stage percent (`progress_pct`) plus SSE summary text (with existing fallback copy preserved when summary is empty).
+
+### Edge cases handled
+- Stage 3 fast transitions (including effective 0 -> 100 jumps) now render cleanly:
+  - progress values are clamped before render
+  - missing checkpoint rows are synthesized/upserted before update application
+  - no `NaN`/undefined progress values are passed to the active summary percent display.
+
+### Verification
+- Build/static verification:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- Manual runtime verification to perform locally with backend SSE stream:
+  - observe `stage_progress` for `stage_id: "2"` and `stage_id: "3"`
+  - confirm stage list rows update percent + summary
+  - confirm active-stage summary card reflects latest SSE summary + percent
+  - confirm cancel / retry / failure flows remain unchanged.

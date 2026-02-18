@@ -92,12 +92,31 @@ function updateStageCheckpoint(
   stageId: number,
   update: (stage: RunStatusResponse['stages'][number]) => RunStatusResponse['stages'][number],
 ): RunStatusResponse['stages'] {
-  return current.stages.map((stage) => {
+  let foundStage = false
+  const nextStages = current.stages.map((stage) => {
     if (stage.stage_id !== stageId) {
       return stage
     }
+
+    foundStage = true
     return update(stage)
   })
+
+  if (foundStage) {
+    return nextStages
+  }
+
+  const syntheticStage = update({
+    id: `stage-${stageId}`,
+    stage_id: stageId,
+    status: 'pending',
+    progress_pct: 0,
+    summary: null,
+    started_at: null,
+    completed_at: null,
+  })
+
+  return [...nextStages, syntheticStage].sort((a, b) => a.stage_id - b.stage_id)
 }
 
 function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunStatusResponse | null {

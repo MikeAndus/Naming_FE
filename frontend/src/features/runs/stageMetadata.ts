@@ -23,8 +23,8 @@ export interface GateDefinition {
 export const STAGE_METADATA: readonly StageMetadata[] = [
   { stage_id: 0, label: 'Research Snapshot', phase: 'phase_1' },
   { stage_id: 1, label: 'Territory Card Generation', phase: 'phase_1' },
-  { stage_id: 2, label: 'Generation Setup', phase: 'phase_2' },
-  { stage_id: 3, label: 'Candidate Expansion', phase: 'phase_2' },
+  { stage_id: 2, label: 'Generating candidates...', phase: 'phase_2' },
+  { stage_id: 3, label: 'Cleaning & deduplicating...', phase: 'phase_2' },
   { stage_id: 4, label: 'First-Pass Screening', phase: 'phase_2' },
   { stage_id: 5, label: 'Cluster Refinement', phase: 'phase_2' },
   { stage_id: 6, label: 'Linguistic Filtering', phase: 'phase_2' },
@@ -75,8 +75,35 @@ export function getStageMetadata(stageId: number): StageMetadata | undefined {
   return STAGE_METADATA_BY_ID.get(stageId)
 }
 
-export function getStageLabel(stageId: number): string {
-  return STAGE_METADATA_BY_ID.get(stageId)?.label ?? `Stage ${stageId}`
+function normalizeStageId(stageId: number | string): number | null {
+  if (typeof stageId === 'number' && Number.isInteger(stageId) && stageId >= 0) {
+    return stageId
+  }
+
+  if (typeof stageId === 'string') {
+    const trimmed = stageId.trim()
+    if (/^\d+$/.test(trimmed)) {
+      return Number(trimmed)
+    }
+
+    if (trimmed.startsWith('stage_')) {
+      const normalized = trimmed.slice('stage_'.length)
+      if (/^\d+$/.test(normalized)) {
+        return Number(normalized)
+      }
+    }
+  }
+
+  return null
+}
+
+export function getStageLabel(stageId: number | string): string {
+  const normalizedStageId = normalizeStageId(stageId)
+  if (normalizedStageId === null) {
+    return `Stage ${stageId}`
+  }
+
+  return STAGE_METADATA_BY_ID.get(normalizedStageId)?.label ?? `Stage ${normalizedStageId}`
 }
 
 export function getStagePhase(stageId: number): StagePhase | undefined {

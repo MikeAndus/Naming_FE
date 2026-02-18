@@ -149,6 +149,12 @@ function getActiveStageFallbackSummary(stage: StageRow): string {
   if (stage.stage_id === 1) {
     return 'Generating territory cards...'
   }
+  if (stage.stage_id === 2) {
+    return 'Generating candidates...'
+  }
+  if (stage.stage_id === 3) {
+    return 'Cleaning and deduplicating candidates...'
+  }
   return 'Stage is in progress.'
 }
 
@@ -380,13 +386,17 @@ function GateCard({ active, label }: { active: boolean; label: string }) {
 
 function ActiveStageSummaryCard({ stage }: { stage: StageRow }) {
   const summary = stage.summary?.trim() || getActiveStageFallbackSummary(stage)
+  const progressPct = clampProgress(stage.progress_pct)
 
   return (
     <div className="rounded-lg border bg-background p-4">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">Active stage summary</p>
-      <p className="mt-1 text-sm font-semibold">
-        Stage {stage.stage_id}: {stage.label}
-      </p>
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold">
+          Stage {stage.stage_id}: {stage.label}
+        </p>
+        <p className="text-sm font-medium text-muted-foreground">{progressPct}%</p>
+      </div>
       <p className="mt-2 text-sm text-muted-foreground">{summary}</p>
     </div>
   )
