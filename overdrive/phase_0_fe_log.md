@@ -642,3 +642,26 @@
 ### Manual test steps / limitations
 - Browser/backend SSE end-to-end observation (including live Stage 0 50->100 updates, Stage 1 per-card increments, and post-failure retry progression) was not fully executable inside this sandbox session because a live backend + interactive browser run were not available here.
 - Elapsed time display precision depends on available `started_at` / `completed_at` timestamps from run checkpoints and updates every second while non-terminal.
+
+## 2026-02-18 01:14 GMT - Territory Review route and desktop layout shell placeholder
+
+### What was added/changed
+- Added `frontend/src/routes/TerritoryReviewPage.tsx` as a presentational Territory Review shell (no API/query/mutation usage).
+- Wired `/projects/:projectId/versions/:versionId/territory-review` to `TerritoryReviewPage` in `frontend/src/app/router.tsx` (replacing the generic placeholder for this route only).
+
+### Desktop-only behavior
+- `<lg`: renders breadcrumb + a `Desktop only` card message.
+- `lg+`: renders a split-pane shell with:
+  - left `Research Snapshot` panel (session-local collapse toggle, independent scroll area)
+  - right `Territory Cards` panel (placeholder card stack with disabled action controls)
+  - sticky bottom action bar with disabled `Add New Card` and `Confirm & Proceed` buttons.
+
+### Manual verification steps
+- Ran:
+  - `cd frontend && npm run lint`
+  - `cd frontend && npm run typecheck`
+  - `cd frontend && npm run build`
+- Route checks to perform in browser:
+  - `http://127.0.0.1:<port>/projects/123/versions/456/territory-review`
+  - Confirm desktop (`>=1024px`) shows header badges + split panes + sticky action region.
+  - Confirm tablet/mobile (`<1024px`) shows desktop-only fallback card.

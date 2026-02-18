@@ -4,6 +4,7 @@ import { App } from '@/app/App'
 import { ProjectDetailPage } from '@/routes/ProjectDetailPage'
 import { ProjectsPage } from '@/routes/ProjectsPage'
 import { RunMonitorPage } from '@/routes/RunMonitorPage'
+import { TerritoryReviewPage } from '@/routes/TerritoryReviewPage'
 import { VersionBuilderPage } from '@/routes/VersionBuilderPage'
 import { VersionPlaceholderPage } from '@/routes/VersionPlaceholderPage'
 
@@ -37,7 +38,7 @@ export const router = createBrowserRouter([
           },
           {
             path: ':projectId/versions/:versionId/territory-review',
-            element: <VersionPlaceholderPage phase={5} title="Territory Review" />,
+            element: <TerritoryReviewPage />,
           },
           {
             path: ':projectId/versions/:versionId/generation-review',
