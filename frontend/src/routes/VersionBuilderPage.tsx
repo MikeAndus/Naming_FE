@@ -31,14 +31,18 @@ type Channel = 'dtc' | 'retail' | 'amazon' | 'b2b' | 'mixed'
 type FormatMode = 'one_word' | 'two_word' | 'any'
 type TrademarkPosture = 'conservative' | 'balanced' | 'bold'
 type SocialCheck = 'instagram' | 'tiktok' | 'facebook' | 'twitter' | 'linkedin' | 'youtube'
+type OptionalPriceTier = PriceTier | ''
+type OptionalChannel = Channel | ''
+type OptionalFormatMode = FormatMode | ''
+type OptionalTrademarkPosture = TrademarkPosture | ''
 
 interface BriefState {
   what_it_is: string
   description: string
   target_market: string
   audience_context: string
-  price_tier: PriceTier
-  channel: Channel
+  price_tier: OptionalPriceTier
+  channel: OptionalChannel
   playful_serious: number
   modern_heritage: number
   mass_premium: number
@@ -56,8 +60,8 @@ interface HotspotState {
 }
 
 interface DialsState {
-  format_mode: FormatMode
-  trademark_posture: TrademarkPosture
+  format_mode: OptionalFormatMode
+  trademark_posture: OptionalTrademarkPosture
   social_checks: SocialCheck[]
   domain_check_enabled: boolean
 }
@@ -156,8 +160,8 @@ function normalizeBrief(value: unknown): BriefState {
     description: readNestedString(value, 'description'),
     target_market: readNestedString(value, 'target_market'),
     audience_context: readNestedString(value, 'audience_context'),
-    price_tier: PRICE_TIERS.includes(priceTier as PriceTier) ? (priceTier as PriceTier) : 'mid',
-    channel: CHANNELS.includes(channel as Channel) ? (channel as Channel) : 'mixed',
+    price_tier: PRICE_TIERS.includes(priceTier as PriceTier) ? (priceTier as PriceTier) : '',
+    channel: CHANNELS.includes(channel as Channel) ? (channel as Channel) : '',
     playful_serious: readNestedNumber(value, 'playful_serious', 3),
     modern_heritage: readNestedNumber(value, 'modern_heritage', 3),
     mass_premium: readNestedNumber(value, 'mass_premium', 3),
@@ -205,10 +209,10 @@ function normalizeDials(value: unknown): DialsState {
   return {
     format_mode: FORMAT_MODES.includes(formatMode as FormatMode)
       ? (formatMode as FormatMode)
-      : 'any',
+      : '',
     trademark_posture: TRADEMARK_POSTURES.includes(trademarkPosture as TrademarkPosture)
       ? (trademarkPosture as TrademarkPosture)
-      : 'balanced',
+      : '',
     social_checks: socialChecks.filter(
       (item): item is SocialCheck =>
         typeof item === 'string' &&
@@ -218,72 +222,93 @@ function normalizeDials(value: unknown): DialsState {
   }
 }
 
-function serializeBrief(brief: BriefState): BriefState {
-  return {
-    ...brief,
+function serializeBrief(brief: BriefState): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
     what_it_is: brief.what_it_is.trim(),
     description: brief.description.trim(),
     target_market: brief.target_market.trim(),
     audience_context: brief.audience_context.trim(),
-    differentiators: brief.differentiators.map((item) => item.trim()),
+    playful_serious: brief.playful_serious,
+    modern_heritage: brief.modern_heritage,
+    mass_premium: brief.mass_premium,
+    bold_calm: brief.bold_calm,
+    differentiators: brief.differentiators.map((item) => item.trim()).filter(Boolean),
     no_go_words: [...new Set(brief.no_go_words.map((item) => item.trim()).filter(Boolean))],
     must_avoid_implying: brief.must_avoid_implying.trim(),
   }
+
+  if (PRICE_TIERS.includes(brief.price_tier as PriceTier)) {
+    payload.price_tier = brief.price_tier
+  }
+  if (CHANNELS.includes(brief.channel as Channel)) {
+    payload.channel = brief.channel
+  }
+
+  return payload
 }
 
 function serializeHotspots(hotspots: HotspotState[]): Array<{ id: string; name: string; paragraph: string; weight?: number }> {
-  return hotspots.map((hotspot) => {
-    const parsedWeight = hotspot.weight.trim() ? Number(hotspot.weight) : undefined
+  return hotspots
+    .map((hotspot) => {
+      const name = hotspot.name.trim()
+      const paragraph = hotspot.paragraph.trim()
+      const hasWeight = hotspot.weight.trim().length > 0
+      const parsedWeight = hasWeight ? Number(hotspot.weight) : undefined
 
-    return {
-      id: hotspot.id,
-      name: hotspot.name.trim(),
-      paragraph: hotspot.paragraph.trim(),
-      ...(Number.isFinite(parsedWeight) ? { weight: parsedWeight } : {}),
-    }
-  })
+      return {
+        id: hotspot.id,
+        name,
+        paragraph,
+        hasContent: Boolean(name || paragraph || hasWeight),
+        ...(Number.isFinite(parsedWeight) ? { weight: parsedWeight } : {}),
+      }
+    })
+    .filter((hotspot) => hotspot.hasContent)
+    .map((hotspot) => {
+      const { hasContent, ...nextHotspot } = hotspot
+      void hasContent
+      return nextHotspot
+    })
 }
 
-function serializeDials(dials: DialsState): DialsState {
-  return {
-    ...dials,
+function serializeDials(dials: DialsState): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
     social_checks: dials.social_checks.filter((value, index, array) => array.indexOf(value) === index),
-    domain_check_enabled: true,
   }
+
+  if (FORMAT_MODES.includes(dials.format_mode as FormatMode)) {
+    payload.format_mode = dials.format_mode
+  }
+  if (TRADEMARK_POSTURES.includes(dials.trademark_posture as TrademarkPosture)) {
+    payload.trademark_posture = dials.trademark_posture
+  }
+
+  return payload
 }
 
 function validateBrief(brief: BriefState): ValidationResult {
   const fieldErrors: Record<string, string> = {}
-
-  if (!brief.what_it_is.trim()) {
-    fieldErrors['brief.what_it_is'] = 'Required.'
-  } else if (brief.what_it_is.trim().length > 200) {
+  if (brief.what_it_is.trim().length > 200) {
     fieldErrors['brief.what_it_is'] = 'Must be 200 characters or less.'
   }
 
-  if (!brief.description.trim()) {
-    fieldErrors['brief.description'] = 'Required.'
-  } else if (brief.description.trim().length > 2000) {
+  if (brief.description.trim().length > 2000) {
     fieldErrors['brief.description'] = 'Must be 2000 characters or less.'
   }
 
-  if (!brief.target_market.trim()) {
-    fieldErrors['brief.target_market'] = 'Required.'
-  } else if (brief.target_market.trim().length > 1000) {
+  if (brief.target_market.trim().length > 1000) {
     fieldErrors['brief.target_market'] = 'Must be 1000 characters or less.'
   }
 
-  if (!brief.audience_context.trim()) {
-    fieldErrors['brief.audience_context'] = 'Required.'
-  } else if (brief.audience_context.trim().length > 1000) {
+  if (brief.audience_context.trim().length > 1000) {
     fieldErrors['brief.audience_context'] = 'Must be 1000 characters or less.'
   }
 
-  if (!PRICE_TIERS.includes(brief.price_tier)) {
+  if (brief.price_tier && !PRICE_TIERS.includes(brief.price_tier)) {
     fieldErrors['brief.price_tier'] = 'Select a price tier.'
   }
 
-  if (!CHANNELS.includes(brief.channel)) {
+  if (brief.channel && !CHANNELS.includes(brief.channel)) {
     fieldErrors['brief.channel'] = 'Select a channel.'
   }
 
@@ -301,18 +326,15 @@ function validateBrief(brief: BriefState): ValidationResult {
   }
 
   brief.differentiators.forEach((item, index) => {
-    if (!item.trim()) {
-      fieldErrors[`brief.differentiators.${index}`] = 'Required.'
-      return
-    }
-    if (item.trim().length > 500) {
+    const trimmed = item.trim()
+    if (trimmed.length > 500) {
       fieldErrors[`brief.differentiators.${index}`] = 'Must be 500 characters or less.'
     }
   })
 
   let sectionError: string | undefined
-  if (brief.differentiators.length < 3 || brief.differentiators.length > 7) {
-    sectionError = 'Differentiators must have between 3 and 7 items.'
+  if (brief.differentiators.length > 7) {
+    sectionError = 'Differentiators must have at most 7 items.'
   }
 
   brief.no_go_words.forEach((item, index) => {
@@ -332,20 +354,16 @@ function validateHotspots(hotspots: HotspotState[]): ValidationResult {
   const fieldErrors: Record<string, string> = {}
   let sectionError: string | undefined
 
-  if (hotspots.length < 2 || hotspots.length > 6) {
-    sectionError = 'Hotspots must have between 2 and 6 items.'
+  if (hotspots.length > 6) {
+    sectionError = 'Hotspots must have at most 6 items.'
   }
 
   hotspots.forEach((hotspot, index) => {
-    if (!hotspot.name.trim()) {
-      fieldErrors[`hotspots.${index}.name`] = 'Required.'
-    } else if (hotspot.name.trim().length > 200) {
+    if (hotspot.name.trim().length > 200) {
       fieldErrors[`hotspots.${index}.name`] = 'Must be 200 characters or less.'
     }
 
-    if (!hotspot.paragraph.trim()) {
-      fieldErrors[`hotspots.${index}.paragraph`] = 'Required.'
-    } else if (hotspot.paragraph.trim().length > 2000) {
+    if (hotspot.paragraph.trim().length > 2000) {
       fieldErrors[`hotspots.${index}.paragraph`] = 'Must be 2000 characters or less.'
     }
 
@@ -363,11 +381,11 @@ function validateHotspots(hotspots: HotspotState[]): ValidationResult {
 function validateDials(dials: DialsState): ValidationResult {
   const fieldErrors: Record<string, string> = {}
 
-  if (!FORMAT_MODES.includes(dials.format_mode)) {
+  if (dials.format_mode && !FORMAT_MODES.includes(dials.format_mode)) {
     fieldErrors['dials.format_mode'] = 'Select a format mode.'
   }
 
-  if (!TRADEMARK_POSTURES.includes(dials.trademark_posture)) {
+  if (dials.trademark_posture && !TRADEMARK_POSTURES.includes(dials.trademark_posture)) {
     fieldErrors['dials.trademark_posture'] = 'Select a trademark posture.'
   }
 
@@ -384,6 +402,16 @@ function isBriefCompleteForStartRun(
   const dialsValidation = validateDials(dials)
 
   const differentiatorsCount = brief.differentiators.filter((item) => item.trim()).length
+  const allDifferentiatorsFilled = brief.differentiators.every((item) => item.trim())
+  const allHotspotsFilled = hotspots.every(
+    (hotspot) => hotspot.name.trim().length > 0 && hotspot.paragraph.trim().length > 0,
+  )
+  const hasPriceTier = PRICE_TIERS.includes(brief.price_tier as PriceTier)
+  const hasChannel = CHANNELS.includes(brief.channel as Channel)
+  const hasFormatMode = FORMAT_MODES.includes(dials.format_mode as FormatMode)
+  const hasTrademarkPosture = TRADEMARK_POSTURES.includes(
+    dials.trademark_posture as TrademarkPosture,
+  )
 
   return (
     !briefValidation.sectionError &&
@@ -391,8 +419,18 @@ function isBriefCompleteForStartRun(
     !hotspotsValidation.sectionError &&
     Object.keys(hotspotsValidation.fieldErrors).length === 0 &&
     Object.keys(dialsValidation.fieldErrors).length === 0 &&
+    brief.what_it_is.trim().length > 0 &&
+    brief.description.trim().length > 0 &&
+    brief.target_market.trim().length > 0 &&
+    brief.audience_context.trim().length > 0 &&
+    hasPriceTier &&
+    hasChannel &&
+    hasFormatMode &&
+    hasTrademarkPosture &&
     hotspots.length >= 2 &&
-    differentiatorsCount >= 3
+    allHotspotsFilled &&
+    differentiatorsCount >= 3 &&
+    allDifferentiatorsFilled
   )
 }
 
@@ -439,6 +477,20 @@ function parse422ValidationErrors(error: unknown): ValidationResult & { section:
   })
 
   return { fieldErrors, section, sectionError }
+}
+
+function getSectionsWithFieldErrors(fieldErrors: Record<string, string>, section?: SectionKey | null): SectionKey[] {
+  const sections = new Set<SectionKey>()
+  if (section) {
+    sections.add(section)
+  }
+  Object.keys(fieldErrors).forEach((path) => {
+    const root = path.split('.')[0]
+    if (root === 'brief' || root === 'hotspots' || root === 'dials') {
+      sections.add(root)
+    }
+  })
+  return Array.from(sections)
 }
 
 function VersionStateBadge({ state }: { state: string }) {
@@ -570,7 +622,13 @@ export function VersionBuilderPage() {
     setBrief(normalizeBrief(version.brief))
     setHotspots(normalizeHotspots(version.hotspots))
     setDials(normalizeDials(version.dials))
-    setDirtySections({ brief: false, hotspots: false, dials: false })
+    const resetDirtySections: Record<SectionKey, boolean> = {
+      brief: false,
+      hotspots: false,
+      dials: false,
+    }
+    dirtySectionsRef.current = resetDirtySections
+    setDirtySections(resetDirtySections)
     setClientFieldErrors({})
     setClientSectionErrors({})
     setServerFieldErrors({})
@@ -606,7 +664,9 @@ export function VersionBuilderPage() {
       if (prev[section]) {
         return prev
       }
-      return { ...prev, [section]: true }
+      const next = { ...prev, [section]: true }
+      dirtySectionsRef.current = next
+      return next
     })
     setLastEditAt(Date.now())
   }, [])
@@ -677,7 +737,7 @@ export function VersionBuilderPage() {
 
   const saveSection = useCallback(
     async (section: SectionKey, reason: SaveReason): Promise<'saved' | 'skipped' | 'failed'> => {
-      if (!versionId || !canEditRef.current) {
+      if (!versionId || (!canEdit && !canEditRef.current)) {
         return 'skipped'
       }
 
@@ -699,7 +759,14 @@ export function VersionBuilderPage() {
           patch: buildPatchPayload(section),
         })
 
-        setDirtySections((prev) => ({ ...prev, [section]: false }))
+        setDirtySections((prev) => {
+          if (!prev[section]) {
+            return prev
+          }
+          const next = { ...prev, [section]: false }
+          dirtySectionsRef.current = next
+          return next
+        })
         setServerFieldErrors((prev) => {
           const prefix = `${section}.`
           return Object.keys(prev).reduce<Record<string, string>>((acc, key) => {
@@ -758,12 +825,20 @@ export function VersionBuilderPage() {
         return 'failed'
       }
     },
-    [buildPatchPayload, clearSectionErrors, patchMutation, runSectionValidation, setValidationErrors, versionId],
+    [
+      buildPatchPayload,
+      canEdit,
+      clearSectionErrors,
+      patchMutation,
+      runSectionValidation,
+      setValidationErrors,
+      versionId,
+    ],
   )
 
   const saveDirtySections = useCallback(
     async (sections?: SectionKey[], reason: SaveReason = 'manual') => {
-      if (isSavingRef.current || !canEditRef.current) {
+      if (isSavingRef.current || (!canEdit && !canEditRef.current)) {
         return { savedCount: 0, hadFailure: false }
       }
 
@@ -797,7 +872,7 @@ export function VersionBuilderPage() {
 
       return { savedCount, hadFailure }
     },
-    [saveSection],
+    [canEdit, saveSection],
   )
 
   useEffect(() => {
@@ -835,9 +910,31 @@ export function VersionBuilderPage() {
       navigate(`/projects/${projectId}/versions/${versionId}/run`)
     } catch (error) {
       if (isApiError(error) && error.status === 422) {
+        const parsed = parse422ValidationErrors(error)
+        setServerFieldErrors(parsed.fieldErrors)
+        setServerSectionErrors(() => {
+          const next: Partial<Record<SectionKey, string>> = {}
+          if (parsed.section && parsed.sectionError) {
+            next[parsed.section] = parsed.sectionError
+          }
+          return next
+        })
+
+        const sectionsWithErrors = getSectionsWithFieldErrors(parsed.fieldErrors, parsed.section)
+        if (sectionsWithErrors.length > 0) {
+          setCollapsedSections((prev) => {
+            const next = { ...prev }
+            sectionsWithErrors.forEach((section) => {
+              next[section] = false
+            })
+            return next
+          })
+        }
+
         toast({
           variant: 'destructive',
-          title: 'Cannot start run: brief is incomplete',
+          title: 'Cannot start run',
+          description: parsed.sectionError ?? 'Please fix the highlighted fields.',
         })
         return
       }

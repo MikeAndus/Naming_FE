@@ -1077,3 +1077,39 @@
   - confirm stage list rows update percent + summary
   - confirm active-stage summary card reflects latest SSE summary + percent
   - confirm cancel / retry / failure flows remain unchanged.
+
+## 2026-02-18 20:02 GMT - Version Builder partial PATCH payloads + Start Run 422 inline validation mapping
+
+### Files changed
+- `frontend/src/routes/VersionBuilderPage.tsx`
+
+### What changed
+- Updated Version Builder save serialization so section PATCH payloads include only user-entered data and omit placeholder/default enum values.
+- For `brief` payloads:
+  - `price_tier` is omitted when unselected.
+  - `channel` is omitted when unselected.
+  - text fields are still trimmed and sent as typed.
+  - `differentiators` now sends non-empty trimmed items only.
+- For `dials` payloads:
+  - `format_mode` is omitted when unselected.
+  - `trademark_posture` is omitted when unselected.
+  - `social_checks` remains deduped and sent.
+- For `hotspots` payloads:
+  - placeholder-only rows are omitted from the request payload.
+  - rows with any entered content still send `id`, trimmed text fields, and optional numeric `weight`.
+- Kept save trigger mechanics unchanged (manual save button, section blur saves, and 1.5s autosave debounce).
+- Updated Start Run 422 handling to parse backend validation detail and surface inline field/section errors in the form (instead of only toast copy):
+  - maps parsed field errors into `serverFieldErrors`
+  - maps section-level error into `serverSectionErrors`
+  - auto-expands affected sections so users can immediately see/fix highlighted fields
+  - shows `Cannot start run` toast with parsed summary/fallback copy
+
+### Verification
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
+### Manual verification to run locally
+- On draft edits with unselected enum fields, click Save and confirm PATCH omits untouched enum keys.
+- Edit only one section and confirm request contains only that top-level section key.
+- Click Start Run with incomplete brief/hotspots/dials and confirm 422 produces inline field/section errors and expanded relevant section(s).
