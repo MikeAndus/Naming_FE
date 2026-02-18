@@ -792,3 +792,47 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-18 13:13 GMT - Territory Review status-only card grid/actions (approve/reject/restore)
+
+### Files added
+- `frontend/src/features/territoryReview/components/TerritoryCardStatusBadge.tsx`
+- `frontend/src/features/territoryReview/components/TerritoryCard.tsx`
+- `frontend/src/features/territoryReview/components/TerritoryCardList.tsx`
+
+### Files updated
+- `frontend/src/features/territoryReview/queries.ts`
+- `frontend/src/routes/TerritoryReviewPage.tsx`
+
+### Summary
+- Replaced the prior read-only card preview with a dedicated Territory Review card grid/list component stack.
+- Added per-card status badge with strong color coding:
+  - Pending (amber)
+  - Approved (green)
+  - Rejected (red)
+- Added status-only action strip per card:
+  - Pending: `Approve`, `Reject`
+  - Approved: `Reject`
+  - Rejected: `Restore` (sets status to `pending`)
+- Added rejected-card visual de-emphasis (muted background/text + lower opacity) while keeping content readable.
+- Expanded dense read-only body rendering for all card data fields:
+  - `metaphor_fields`
+  - `imagery_nouns`
+  - `action_verbs`
+  - `tone_fingerprint` (compact 1-5 bar visualization)
+  - `avoid_list`
+  - `naming_style_rules`
+
+### Query/mutation behavior notes
+- Added `usePatchTerritoryCardStatusMutation(runId)` in `frontend/src/features/territoryReview/queries.ts` as a status-only wrapper over the existing patch mutation.
+- Status changes are optimistic via existing mutation lifecycle:
+  - immediate local status update in cache (`onMutate`)
+  - rollback on error (`onError`)
+  - invalidate/refetch on settle (`onSettled`)
+- Page now wires status actions through this hook and disables card action buttons while that card is pending (`isCardPending`) to prevent double taps.
+- On mutation failure, a destructive toast is shown using parsed territory-review error semantics (including 409 conflict messaging).
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

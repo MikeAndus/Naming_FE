@@ -14,17 +14,21 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useProjectDetailQuery } from '@/features/projects/queries'
 import { useRunStatusQuery } from '@/features/runs/queries'
+import { TerritoryCardList } from '@/features/territoryReview/components/TerritoryCardList'
 import {
+  usePatchTerritoryCardStatusMutation,
   useResearchSnapshot,
   useTerritoryCards,
 } from '@/features/territoryReview/queries'
 import { useVersionDetailQuery } from '@/features/versions/queries'
 import {
   getErrorMessage,
+  type ParsedTerritoryReviewError,
   parseTerritoryReviewError,
   type ResearchSnapshot,
-  type TerritoryCard,
+  type TerritoryCardReviewStatus,
 } from '@/lib/api'
+import { toast } from '@/hooks/use-toast'
 
 function subscribeDesktop(callback: () => void): () => void {
   if (typeof window === 'undefined') {
@@ -89,26 +93,6 @@ function getRunStateBadgeClass(state: string): string {
   return 'bg-amber-100 text-amber-800 hover:bg-amber-100'
 }
 
-function getCardStatusBadge(status: TerritoryCard['status']) {
-  if (status === 'approved') {
-    return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">approved</Badge>
-  }
-
-  if (status === 'rejected') {
-    return <Badge variant="destructive">rejected</Badge>
-  }
-
-  return <Badge variant="outline">pending</Badge>
-}
-
-function getCardLabel(card: TerritoryCard): string {
-  if (card.source_hotspot_id === null) {
-    return 'User-added'
-  }
-
-  return `Hotspot card ${card.source_hotspot_id.slice(0, 8)}`
-}
-
 function renderListOrPlaceholder(items: string[]) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">None found.</p>
@@ -151,6 +135,16 @@ function InlinePanelError({
       </CardContent>
     </Card>
   )
+}
+
+function getStatusMutationErrorMessage(parsedError: ParsedTerritoryReviewError): string {
+  if (parsedError.kind === 'conflict') {
+    return (
+      parsedError.message || 'This run is not in territory review; status changes are locked.'
+    )
+  }
+
+  return parsedError.message || 'Unable to update card status. Please retry.'
 }
 
 function SnapshotSkeleton() {
@@ -283,57 +277,6 @@ function ResearchSnapshotSection({ snapshot }: { snapshot: ResearchSnapshot | un
   )
 }
 
-function CardPreviewList({ cards }: { cards: TerritoryCard[] }) {
-  if (cards.length === 0) {
-    return (
-      <Card className="border-dashed shadow-none">
-        <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground">No territory cards found.</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <div className="grid gap-3 xl:grid-cols-2">
-      {cards.map((card) => (
-        <Card className="border-muted" key={card.id}>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle className="text-base">{getCardLabel(card)}</CardTitle>
-                <CardDescription className="mt-1">
-                  id: <code>{card.id.slice(0, 8)}</code>
-                </CardDescription>
-              </div>
-              {getCardStatusBadge(card.status)}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>
-              <span className="font-medium">Metaphor fields:</span>{' '}
-              {card.card_data.metaphor_fields.slice(0, 2).join(', ') || 'None'}
-            </p>
-            <p>
-              <span className="font-medium">Imagery nouns:</span>{' '}
-              {card.card_data.imagery_nouns.slice(0, 3).join(', ') || 'None'}
-            </p>
-            <p>
-              <span className="font-medium">Action verbs:</span>{' '}
-              {card.card_data.action_verbs.slice(0, 3).join(', ') || 'None'}
-            </p>
-            <p>
-              <span className="font-medium">Tone:</span>{' '}
-              P{card.card_data.tone_fingerprint.playful} M{card.card_data.tone_fingerprint.modern}{' '}
-              Pr{card.card_data.tone_fingerprint.premium} B{card.card_data.tone_fingerprint.bold}
-            </p>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  )
-}
-
 export function TerritoryReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
   const isDesktop = useIsDesktop()
@@ -348,8 +291,44 @@ export function TerritoryReviewPage() {
     runId && runStatusQuery.data && runStatusQuery.data.state === 'territory_review',
   )
 
+  const patchTerritoryCardMutation = usePatchTerritoryCardStatusMutation(
+    hasTerritoryReviewRun ? runId : undefined,
+  )
+
   const researchSnapshotQuery = useResearchSnapshot(hasTerritoryReviewRun ? runId : undefined)
   const territoryCardsQuery = useTerritoryCards(hasTerritoryReviewRun ? runId : undefined)
+
+  const handleStatusUpdate = (
+    cardId: string,
+    status: TerritoryCardReviewStatus,
+  ) => {
+    patchTerritoryCardMutation.mutateStatus(
+      cardId,
+      status,
+      {
+        onError: (error) => {
+          const parsedError = parseTerritoryReviewError(error)
+          toast({
+            variant: 'destructive',
+            title: 'Status update failed',
+            description: getStatusMutationErrorMessage(parsedError),
+          })
+        },
+      },
+    )
+  }
+
+  const handleApproveCard = (cardId: string) => {
+    handleStatusUpdate(cardId, 'approved')
+  }
+
+  const handleRejectCard = (cardId: string) => {
+    handleStatusUpdate(cardId, 'rejected')
+  }
+
+  const handleRestoreCard = (cardId: string) => {
+    handleStatusUpdate(cardId, 'pending')
+  }
 
   const projectLabel = projectQuery.data?.name?.trim() || 'Project'
   const versionLabel =
@@ -591,7 +570,7 @@ export function TerritoryReviewPage() {
                 <Badge variant="outline">{cards.length}</Badge>
               )}
             </div>
-            <CardDescription>Read-only card list for this territory review gate.</CardDescription>
+            <CardDescription>Status-only review actions for this territory review gate.</CardDescription>
           </CardHeader>
           <CardContent className="h-full overflow-y-auto pt-6">
             {isRunResolutionLoading || isCardsInitialLoading ? <CardsSkeleton /> : null}
@@ -607,7 +586,13 @@ export function TerritoryReviewPage() {
             ) : null}
 
             {!isRunResolutionLoading && !isCardsInitialLoading && !territoryCardsQuery.isError ? (
-              <CardPreviewList cards={cards} />
+              <TerritoryCardList
+                cards={cards}
+                isCardPending={patchTerritoryCardMutation.isCardPending}
+                onApprove={handleApproveCard}
+                onReject={handleRejectCard}
+                onRestore={handleRestoreCard}
+              />
             ) : null}
           </CardContent>
         </Card>

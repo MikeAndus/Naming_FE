@@ -21,6 +21,7 @@ import {
   type ResearchSnapshot,
   type TerritoryCard,
   type TerritoryCardPatchResponse,
+  type TerritoryCardReviewStatus,
 } from '@/lib/api'
 
 export const territoryReviewResearchSnapshotQueryKey = (runId: string) =>
@@ -202,6 +203,26 @@ export function usePatchTerritoryCardMutation(runId: string | undefined) {
   return {
     ...mutation,
     isCardPending: (cardId: string) => pendingCardIdSet.has(cardId),
+  }
+}
+
+export function usePatchTerritoryCardStatusMutation(runId: string | undefined) {
+  const patchMutation = usePatchTerritoryCardMutation(runId)
+
+  return {
+    ...patchMutation,
+    mutateStatus: (
+      cardId: string,
+      status: TerritoryCardReviewStatus,
+      options?: Parameters<typeof patchMutation.mutate>[1],
+    ) =>
+      patchMutation.mutate(
+        {
+          cardId,
+          patch: { status },
+        },
+        options,
+      ),
   }
 }
 
