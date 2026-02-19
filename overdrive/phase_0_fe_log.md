@@ -1217,3 +1217,50 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-19 15:02 GMT - Generation Review route + unavailable-state navigation guards
+
+### Files added/modified
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/app/router.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Route path
+- Added Generation Review route at:
+  - `/projects/:projectId/versions/:versionId/generation-review`
+- Router now maps this path to `GenerationReviewPage` (replacing the phase placeholder element for this route).
+
+### What was implemented
+- Added desktop-only Generation Review route shell with device gating:
+  - `<lg` renders a single fallback card with exact text: `Best viewed on desktop`.
+- Added unavailable-state guard cards (navigation-only CTAs) using run resolution via `version.latest_run_id` + run status query:
+  - No run id: CTA `Go to Version Builder` -> `/projects/:projectId/versions/:versionId`
+  - Run state `draft|queued|stage_0|stage_1`: CTA `Go to Run Monitor` -> `/projects/:projectId/versions/:versionId/run`
+  - Run state `territory_review`: CTA `Review Territory Cards` -> `/projects/:projectId/versions/:versionId/territory-review`
+  - Run state `stage_2..stage_8`: CTA `Go to Run Monitor` -> `/projects/:projectId/versions/:versionId/run`
+- For available states (including `generation_review`), route renders a minimal desktop placeholder shell only.
+
+### API activity constraints confirmation
+- In unavailable states, this route triggers only read queries required for gating:
+  - `useVersionDetailQuery(versionId)`
+  - `useRunStatusQuery(latest_run_id)`
+- No mutations/actions are mounted or triggered from this page:
+  - no start-run
+  - no deep-clearance trigger
+  - no name patch/mutation actions
+  - no names-table/list query hook usage
+
+### Manual sanity-check steps
+- Desktop (`>=1024px`):
+  - Open `/projects/<projectId>/versions/<versionId>/generation-review` where `latest_run_id` is null -> verify `Go to Version Builder` CTA link.
+  - With run state `queued`/`stage_0`/`stage_1` -> verify `Go to Run Monitor` CTA link.
+  - With run state `territory_review` -> verify `Review Territory Cards` CTA link.
+  - With run state `stage_2` through `stage_8` -> verify `Go to Run Monitor` CTA link.
+  - With run state `generation_review` (or later) -> verify minimal Generation Review desktop placeholder renders (no guard CTA card).
+- Mobile (`<1024px`):
+  - Open same route and verify only the fallback card with text `Best viewed on desktop`.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

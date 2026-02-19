@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { App } from '@/app/App'
+import { GenerationReviewPage } from '@/routes/GenerationReviewPage'
 import { ProjectDetailPage } from '@/routes/ProjectDetailPage'
 import { ProjectsPage } from '@/routes/ProjectsPage'
 import { RunMonitorPage } from '@/routes/RunMonitorPage'
@@ -42,7 +43,7 @@ export const router = createBrowserRouter([
           },
           {
             path: ':projectId/versions/:versionId/generation-review',
-            element: <VersionPlaceholderPage phase={8} title="Generation Review" />,
+            element: <GenerationReviewPage />,
           },
           {
             path: ':projectId/versions/:versionId/results',
