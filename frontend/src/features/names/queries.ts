@@ -153,7 +153,7 @@ export function usePatchNameCandidateMutation() {
       return { rollbacks }
     },
     onError: (_error, _variables, context) => {
-      context?.rollbacks.forEach((rollbackContext) => {
+      ;[...(context?.rollbacks ?? [])].reverse().forEach((rollbackContext) => {
         rollbackRunNamesOptimisticUpdate(queryClient, rollbackContext)
       })
     },

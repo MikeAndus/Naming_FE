@@ -1204,6 +1204,7 @@
 ### Design decisions
 - Query key strategy is run-scoped and param-scoped: `['names','run',runId,normalizedParams]`, with run-prefix helpers for broad invalidation/optimistic updates.
 - Optimistic toggle helpers update every cached names list for `runId` (including different filter/sort/pagination variants), store per-query snapshots, and provide rollback context consumed by mutation `onError`.
+- When both toggle fields are patched in one request, rollback is applied in reverse optimistic-update order to restore the original pre-mutation cache state deterministically.
 - Patch mutation applies optimistic updates only for boolean toggles (`shortlisted`, `selected_for_clearance`) and merges server response into all run caches on success for canonical row data.
 - Errors continue using shared `ApiError` handling from the common client layer; no endpoint-specific auth or custom error wrappers were introduced.
 
