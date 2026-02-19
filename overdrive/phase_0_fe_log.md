@@ -1264,3 +1264,67 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-19 15:12 GMT - Phase 8 Generation Review desktop shell: sticky header/filter + names table
+
+### Files added/modified
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/features/names/components/FastClearanceBadge.tsx`
+- `frontend/src/features/names/components/NamesFilterBar.tsx`
+- `frontend/src/features/names/components/NamesTable.tsx`
+- `frontend/src/features/names/fast-clearance.ts`
+- `frontend/src/features/names/filters.ts`
+- `frontend/src/hooks/use-debounced-value.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### What was implemented
+- Replaced Generation Review desktop placeholder with full Phase 8 core UI on `lg+`:
+  - sticky top header (breadcrumbs, version/run badges, showing count)
+  - sticky filter bar (search + multi filters + clear all)
+  - independently scrollable names table region
+  - sticky bottom action bar placeholder (`Action bar (coming next)`)
+  - legal disclaimer text:
+    - `USPTO screening results are for knockout purposes only and do not constitute legal advice.`
+- Kept existing unavailable-state guard CTAs and mobile fallback card behavior (`Best viewed on desktop`).
+
+### Data/query behavior
+- Names list is loaded via existing names query hook and endpoint contract:
+  - `useRunNamesQuery(runId, { limit: 100, offset: 0, sort_by: 'rank', sort_dir: 'asc', selected_for_final: true })`
+  - endpoint: `GET /api/v1/runs/{run_id}/names`
+  - response envelope used as `{ total, items }`
+- Names query is enabled only when Generation Review is in an available run state (no names query in unavailable guard states).
+
+### Filter/sort decisions
+- Search uses a 300ms debounced value (`useDebouncedValue`) and is applied client-side against `name_text`.
+- Client-side filters implemented for:
+  - family multi-select
+  - territory multi-select (`territory_card_id`, labels from backend-provided `territory_card_label`)
+  - format multi-select
+  - score range (`scores.composite`)
+  - fast-clearance status (`green|amber|red|unknown` normalized)
+  - shortlisted toggle (All vs Starred only)
+  - clear-all reset
+- Default ordering implementation:
+  - server pre-sort by `rank ASC`
+  - client tie-break sort by `scores.composite DESC` (then name text asc).
+
+### Table/layout decisions
+- Column order: Star, Select, Rank, Name, Family, Territory, Format, Score, Meaning, Clearance.
+- Responsive desktop column hiding implemented with progressive max-width breakpoints:
+  - Meaning hidden first: `max-[1500px]`
+  - Territory hidden next: `max-[1320px]`
+  - Format hidden next: `max-[1180px]`
+  - Family hidden last: `max-[1100px]`
+- Meaning cell uses truncation (`truncate`) and width constraint to avoid row-height expansion.
+
+### Edge cases handled
+- Null rank renders `-` and sorts to the end.
+- Missing/non-numeric composite score renders `-` and sorts as lowest tie-break value.
+- Missing or non-standard `fast_clearance.status` is normalized to `unknown` and rendered with gray badge style.
+- Filtered empty result set shows inline empty state with working `Clear all filters` action.
+- Table loading state uses skeleton rows; error state shows retry card.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

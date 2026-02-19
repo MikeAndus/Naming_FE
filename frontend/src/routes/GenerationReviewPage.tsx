@@ -1,13 +1,28 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  NamesFilterBar,
+} from '@/features/names/components/NamesFilterBar'
+import { NamesTable } from '@/features/names/components/NamesTable'
+import { getNormalizedFastClearanceStatus } from '@/features/names/fast-clearance'
+import {
+  createDefaultNamesFilters,
+  getNamesFilterScoreRange,
+  isNamesFilterStateActive,
+  sortTerritoryOptions,
+  type NamesFilterState,
+} from '@/features/names/filters'
+import { useRunNamesQuery } from '@/features/names/queries'
+import { useProjectDetailQuery } from '@/features/projects/queries'
 import { useRunStatusQuery } from '@/features/runs/queries'
 import { useVersionDetailQuery } from '@/features/versions/queries'
-import { getErrorMessage, type RunState } from '@/lib/api'
+import { type NameCandidateResponse, getErrorMessage, type RunState } from '@/lib/api'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
 function subscribeDesktop(callback: () => void): () => void {
   if (typeof window === 'undefined') {
@@ -89,13 +104,197 @@ function getUnavailableCta(
   return null
 }
 
+function getVersionStateBadgeClass(state: string): string {
+  if (state === 'complete') {
+    return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+  }
+
+  if (state === 'failed') {
+    return 'bg-destructive text-destructive-foreground hover:bg-destructive'
+  }
+
+  if (
+    state === 'phase_1_running' ||
+    state === 'territory_review' ||
+    state === 'phase_2_running' ||
+    state === 'generation_review' ||
+    state === 'phase_3_running'
+  ) {
+    return 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+  }
+
+  return ''
+}
+
+function getRunStateBadgeClass(state: string): string {
+  if (state === 'complete') {
+    return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+  }
+
+  if (state === 'failed') {
+    return 'bg-destructive text-destructive-foreground hover:bg-destructive'
+  }
+
+  return 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+}
+
+function getCompositeScore(candidate: NameCandidateResponse): number {
+  const value = candidate.scores.composite
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return Number.NEGATIVE_INFINITY
+  }
+
+  return value
+}
+
+function compareNameCandidates(left: NameCandidateResponse, right: NameCandidateResponse): number {
+  const leftRank = left.rank ?? Number.POSITIVE_INFINITY
+  const rightRank = right.rank ?? Number.POSITIVE_INFINITY
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank
+  }
+
+  const leftScore = getCompositeScore(left)
+  const rightScore = getCompositeScore(right)
+  if (leftScore !== rightScore) {
+    return rightScore - leftScore
+  }
+
+  return left.name_text.localeCompare(right.name_text)
+}
+
+const EMPTY_NAMES: NameCandidateResponse[] = []
+
 export function GenerationReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
   const isDesktop = useIsDesktop()
+
+  const resolvedProjectId = projectId && isDesktop ? projectId : undefined
   const resolvedVersionId = projectId && versionId && isDesktop ? versionId : undefined
+  const projectQuery = useProjectDetailQuery(resolvedProjectId)
   const versionQuery = useVersionDetailQuery(resolvedVersionId)
   const runId = versionQuery.data?.latest_run_id ?? undefined
   const runStatusQuery = useRunStatusQuery(isDesktop ? runId : undefined)
+
+  const versionBuilderHref = projectId && versionId ? `/projects/${projectId}/versions/${versionId}` : '/projects'
+  const runMonitorHref = `${versionBuilderHref}/run`
+  const territoryReviewHref = `${versionBuilderHref}/territory-review`
+
+  const runState = runStatusQuery.data?.state
+  const unavailableCta = runState
+    ? getUnavailableCta(runState, {
+        runMonitorHref,
+        territoryReviewHref,
+      })
+    : null
+
+  const shouldLoadNames = Boolean(
+    isDesktop && runId && runState && !unavailableCta && projectId && versionId,
+  )
+  const namesQuery = useRunNamesQuery(
+    shouldLoadNames ? runId : undefined,
+    {
+      limit: 100,
+      offset: 0,
+      sort_by: 'rank',
+      sort_dir: 'asc',
+      selected_for_final: true,
+    },
+    {
+      enabled: shouldLoadNames,
+    },
+  )
+
+  const [filters, setFilters] = useState<NamesFilterState>(() => createDefaultNamesFilters())
+  const debouncedSearch = useDebouncedValue(filters.search, 300)
+
+  const allNames = namesQuery.data?.items ?? EMPTY_NAMES
+  const territoryOptions = useMemo(() => sortTerritoryOptions(allNames), [allNames])
+
+  const scoreRange = useMemo(() => getNamesFilterScoreRange(filters), [filters])
+
+  const filteredNames = useMemo(() => {
+    const searchValue = debouncedSearch.trim().toLowerCase()
+
+    return allNames
+      .filter((candidate) => {
+        if (searchValue && !candidate.name_text.toLowerCase().includes(searchValue)) {
+          return false
+        }
+
+        if (filters.families.length > 0 && !filters.families.includes(candidate.family)) {
+          return false
+        }
+
+        if (
+          filters.territories.length > 0 &&
+          !filters.territories.includes(candidate.territory_card_id)
+        ) {
+          return false
+        }
+
+        if (filters.formats.length > 0 && !filters.formats.includes(candidate.format)) {
+          return false
+        }
+
+        if (filters.shortlistedOnly && !candidate.shortlisted) {
+          return false
+        }
+
+        const clearanceStatus = getNormalizedFastClearanceStatus(candidate.fast_clearance)
+        if (
+          filters.clearanceStatuses.length > 0 &&
+          !filters.clearanceStatuses.includes(clearanceStatus)
+        ) {
+          return false
+        }
+
+        const score = getCompositeScore(candidate)
+        if (scoreRange.min !== null && score < scoreRange.min) {
+          return false
+        }
+        if (scoreRange.max !== null && score > scoreRange.max) {
+          return false
+        }
+
+        return true
+      })
+      .sort(compareNameCandidates)
+  }, [
+    allNames,
+    debouncedSearch,
+    filters.clearanceStatuses,
+    filters.families,
+    filters.formats,
+    filters.shortlistedOnly,
+    filters.territories,
+    scoreRange.max,
+    scoreRange.min,
+  ])
+
+  const totalCount = namesQuery.data?.total ?? allNames.length
+  const showingCount = filteredNames.length
+  const starredCount = filteredNames.filter((candidate) => candidate.shortlisted).length
+  const selectedCount = filteredNames.filter((candidate) => candidate.selected_for_clearance).length
+
+  const hasActiveFilters = isNamesFilterStateActive(filters)
+
+  const projectLabel = projectQuery.data?.name?.trim() || 'Project'
+  const versionLabel =
+    versionQuery.data?.version_number !== undefined
+      ? `v${versionQuery.data.version_number}`
+      : versionId
+        ? `v${versionId.slice(0, 8)}`
+        : 'Version'
+
+  const breadcrumbs = [
+    { label: 'Dashboard', to: '/projects' },
+    { label: projectLabel, to: projectId ? `/projects/${projectId}` : '/projects' },
+    { label: versionLabel, to: versionBuilderHref },
+    { label: 'Generation review' },
+  ]
+
+  const isNamesLoading = namesQuery.isLoading || (namesQuery.isFetching && !namesQuery.data)
 
   if (!projectId || !versionId) {
     return (
@@ -122,17 +321,6 @@ export function GenerationReviewPage() {
       </section>
     )
   }
-
-  const versionBuilderHref = `/projects/${projectId}/versions/${versionId}`
-  const runMonitorHref = `${versionBuilderHref}/run`
-  const territoryReviewHref = `${versionBuilderHref}/territory-review`
-
-  const breadcrumbs = [
-    { label: 'Dashboard', to: '/projects' },
-    { label: `Project ${projectId.slice(0, 8)}`, to: `/projects/${projectId}` },
-    { label: `Version ${versionId.slice(0, 8)}`, to: versionBuilderHref },
-    { label: 'Generation Review' },
-  ]
 
   if (versionQuery.isLoading) {
     return (
@@ -219,10 +407,6 @@ export function GenerationReviewPage() {
     )
   }
 
-  const unavailableCta = getUnavailableCta(runStatusQuery.data.state, {
-    runMonitorHref,
-    territoryReviewHref,
-  })
   if (unavailableCta) {
     return (
       <section className="space-y-4">
@@ -246,24 +430,75 @@ export function GenerationReviewPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <Breadcrumbs items={breadcrumbs} />
-      <Card>
-        <CardHeader>
-          <CardTitle>Generation Review</CardTitle>
-          <CardDescription>
-            Desktop Generation Review workspace is ready for this run state.
-          </CardDescription>
-          <div className="pt-1">
-            <Badge variant="outline">Run state: {formatStateLabel(runStatusQuery.data.state)}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
+    <section className="flex h-[calc(100vh-10rem)] min-h-[560px] flex-col gap-3">
+      <div className="sticky top-0 z-20 shrink-0 space-y-3 bg-muted/30 pb-1">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-2">
+                <Breadcrumbs items={breadcrumbs} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={getVersionStateBadgeClass(versionQuery.data.state)}>
+                    {formatStateLabel(versionQuery.data.state)}
+                  </Badge>
+                  <Badge className={getRunStateBadgeClass(runStatusQuery.data.state)}>
+                    {formatStateLabel(runStatusQuery.data.state)}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="text-sm text-muted-foreground">
+                Showing {showingCount} of {totalCount}
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        <NamesFilterBar
+          filters={filters}
+          hasActiveFilters={hasActiveFilters}
+          onChange={(updater) => {
+            setFilters((current) => updater(current))
+          }}
+          onClearAll={() => {
+            setFilters(createDefaultNamesFilters())
+          }}
+          selectedCount={selectedCount}
+          showingCount={showingCount}
+          starredCount={starredCount}
+          territoryOptions={territoryOptions}
+          totalResults={totalCount}
+        />
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-background">
+        <NamesTable
+          errorMessage={getErrorMessage(namesQuery.error, 'Please try again.')}
+          hasActiveFilters={hasActiveFilters}
+          isError={namesQuery.isError}
+          isLoading={isNamesLoading}
+          items={filteredNames}
+          onClearFilters={() => {
+            setFilters(createDefaultNamesFilters())
+          }}
+          onRetry={() => {
+            void namesQuery.refetch()
+          }}
+        />
+      </div>
+
+      <p className="shrink-0 text-xs text-muted-foreground">
+        USPTO screening results are for knockout purposes only and do not constitute legal advice.
+      </p>
+
+      <div className="sticky bottom-0 z-20 shrink-0 rounded-lg border bg-background/95 px-4 py-3 backdrop-blur">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">Action bar (coming next)</p>
           <p className="text-sm text-muted-foreground">
-            Full Generation Review table and curation UI are implemented in a later node.
+            Showing {showingCount} of {totalCount}
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </section>
   )
 }
