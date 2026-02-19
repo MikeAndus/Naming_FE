@@ -1425,3 +1425,31 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-19 16:29 GMT - Generation Review CTA entry points in Run Monitor + Version Builder
+
+### What changed
+- Added a Generation Review gate-card variant in Run Monitor that surfaces a CTA only when `run.state === 'generation_review'`.
+- Added a Version Builder inline banner variant for `generation_review` state with the same CTA destination.
+- CTA label in both places: `Review Generated Names`.
+- CTA destination in both places: `/projects/:projectId/versions/:versionId/generation-review`.
+
+### Files touched
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `frontend/src/routes/VersionBuilderPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Manual verification steps performed
+- Static code-path verification for Run Monitor:
+  - Confirmed gate-card CTA render is additionally gated by strict `runState === 'generation_review'` and only for the `generation_review` gate definition.
+  - Confirmed no CTA renders for other gate/state combinations.
+- Static code-path verification for Version Builder:
+  - Confirmed inline banner renders only when `runStatusQuery.data?.state === 'generation_review'`.
+  - Confirmed CTA is absent for non-`generation_review` states.
+- Build checks:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+
+### Follow-ups / edge cases
+- Runtime browser verification with a live backend run state transition (`stage_8` -> `generation_review`) remains recommended to visually confirm CTA timing and click-through behavior in both pages.

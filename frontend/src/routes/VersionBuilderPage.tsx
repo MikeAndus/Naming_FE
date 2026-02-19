@@ -779,6 +779,7 @@ export function VersionBuilderPage() {
     Boolean(latestRunId) &&
     (runStatusQuery.data ? !isTerminalRunState(runStatusQuery.data.state) : true)
   const isTerritoryReviewGate = runStatusQuery.data?.state === 'territory_review'
+  const isGenerationReviewGate = runStatusQuery.data?.state === 'generation_review'
 
   useEffect(() => {
     canEditRef.current = canEdit
@@ -1373,6 +1374,24 @@ export function VersionBuilderPage() {
               <Button asChild type="button">
                 <Link to={`/projects/${projectId}/versions/${versionId}/territory-review`}>
                   Review Territory Cards
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {isGenerationReviewGate ? (
+          <Card className="border-emerald-300 bg-emerald-50/70">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-emerald-900">Generated names are ready for review</p>
+                <p className="text-sm text-emerald-900/90">
+                  Open Generation Review to curate candidates and prepare deep clearance.
+                </p>
+              </div>
+              <Button asChild type="button">
+                <Link to={`/projects/${projectId}/versions/${versionId}/generation-review`}>
+                  Review Generated Names
                 </Link>
               </Button>
             </CardContent>

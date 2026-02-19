@@ -367,7 +367,21 @@ function StageCard({
   )
 }
 
-function GateCard({ active, label }: { active: boolean; label: string }) {
+function GateCard({
+  active,
+  gate,
+  runState,
+  generationReviewHref,
+}: {
+  active: boolean
+  gate: GateDefinition
+  runState: RunState | undefined
+  generationReviewHref: string
+}) {
+  const isGenerationReviewGate = gate.run_state === 'generation_review'
+  const showGenerationReviewCta =
+    isGenerationReviewGate && runState === 'generation_review'
+
   return (
     <motion.article
       className={`rounded-lg border border-dashed px-4 py-3 ${
@@ -377,9 +391,20 @@ function GateCard({ active, label }: { active: boolean; label: string }) {
       transition={{ duration: 0.2 }}
     >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Gate: {label}</p>
+        <p className="text-sm font-medium">Gate: {gate.label}</p>
         {active ? <Badge variant="secondary">Active</Badge> : <Badge variant="outline">Waiting</Badge>}
       </div>
+
+      {showGenerationReviewCta ? (
+        <div className="mt-3 space-y-3">
+          <p className="text-sm">
+            Names are ready for curation. Open Generation Review to shortlist and select names.
+          </p>
+          <Button asChild type="button">
+            <Link to={generationReviewHref}>Review Generated Names</Link>
+          </Button>
+        </div>
+      ) : null}
     </motion.article>
   )
 }
@@ -862,7 +887,12 @@ export function RunMonitorPage() {
                           layout
                           transition={{ duration: 0.2 }}
                         >
-                          <GateCard active={row.active} label={row.gate.label} />
+                          <GateCard
+                            active={row.active}
+                            gate={row.gate}
+                            generationReviewHref={`/projects/${projectId}/versions/${versionId}/generation-review`}
+                            runState={runStatus?.state}
+                          />
                         </motion.div>
                       )
                     }
