@@ -125,6 +125,48 @@ export function optimisticallySetSelectedForClearanceAcrossRunCaches(
   return { snapshots }
 }
 
+export function optimisticallySetNotesAcrossRunCaches(
+  queryClient: QueryClient,
+  params: {
+    runId: string
+    nameId: string
+    notes: string | null
+  },
+): RunNamesOptimisticRollbackContext {
+  const { runId, nameId, notes } = params
+  const snapshots: RunNamesQuerySnapshot[] = []
+  const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
+  const nowIso = new Date().toISOString()
+
+  queryClient
+    .getQueriesData<NameCandidateListResponse>({
+      queryKey: runScopedQueryPrefix,
+    })
+    .forEach(([queryKey, current]) => {
+      if (!current) {
+        return
+      }
+
+      const next = updateCandidateInCachedList(current, nameId, (candidate) => ({
+        ...candidate,
+        notes,
+        updated_at: nowIso,
+      }))
+
+      if (next === current) {
+        return
+      }
+
+      snapshots.push({
+        queryKey,
+        previousData: current,
+      })
+      queryClient.setQueryData<NameCandidateListResponse>(queryKey, next)
+    })
+
+  return { snapshots }
+}
+
 export function mergePatchedCandidateAcrossRunCaches(
   queryClient: QueryClient,
   params: {

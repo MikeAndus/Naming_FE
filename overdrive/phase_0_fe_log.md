@@ -1328,3 +1328,46 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-19 15:22 GMT - Generation Review Name Detail drawer (Sheet) with inline curation edits
+
+### Files added/modified
+- `frontend/src/components/ui/sheet.tsx`
+- `frontend/src/features/names/components/NameDetailDrawer.tsx`
+- `frontend/src/features/names/components/NamesTable.tsx`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/features/names/queries.ts`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### What changed
+- Added a shadcn-style Sheet primitive and integrated a right-side Name Detail drawer (`400px` width) for Generation Review.
+- Generation Review now opens the drawer on row click by storing `selectedNameId` and deriving the selected candidate from the live names list cache.
+- Drawer includes:
+  - name header + family/format/territory badges
+  - score breakdown (composite + dimensions)
+  - fast-clearance detail (`checked_at`, unknown reason fallback, pretty raw-response JSON)
+  - meaning/backstory sections
+  - notes textarea with debounced autosave
+  - shortlist + selected-for-clearance inline controls
+
+### Row click exclusion behavior
+- Implemented propagation guards in `NamesTable` so row click does not fire when interacting with:
+  - shortlist star button
+  - selected-for-clearance checkbox area
+- Used `event.stopPropagation()` on both `onClick` and `onPointerDown` for those interactive controls.
+
+### Notes autosave behavior
+- Debounce interval: **700ms** via `useDebouncedValue`.
+- Drawer does not PATCH on open without edits (baseline compare against current candidate notes).
+- Notes PATCH payload sends only `{ notes: string | null }`.
+
+### Optimistic update + rollback/error behavior
+- Extended names optimistic utilities with `optimisticallySetNotesAcrossRunCaches(...)` so notes update immediately across all run-scoped cached name lists.
+- `usePatchNameCandidateMutation` now applies optimistic updates for `shortlisted`, `selected_for_clearance`, and `notes`, with rollback contexts restored on error.
+- Route/drawer mutation error handlers surface destructive toasts using backend `detail` via shared error parsing; this includes server-side 409 version-state gating responses.
+
+### Verification
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

@@ -19,6 +19,7 @@ import {
 } from '@/lib/api'
 import {
   mergePatchedCandidateAcrossRunCaches,
+  optimisticallySetNotesAcrossRunCaches,
   optimisticallySetSelectedForClearanceAcrossRunCaches,
   optimisticallySetShortlistedAcrossRunCaches,
   rollbackRunNamesOptimisticUpdate,
@@ -146,6 +147,16 @@ export function usePatchNameCandidateMutation() {
             runId,
             nameId: variables.nameId,
             selectedForClearance: variables.patch.selected_for_clearance,
+          }),
+        )
+      }
+
+      if (variables.patch.notes !== undefined) {
+        rollbacks.push(
+          optimisticallySetNotesAcrossRunCaches(queryClient, {
+            runId,
+            nameId: variables.nameId,
+            notes: variables.patch.notes,
           }),
         )
       }

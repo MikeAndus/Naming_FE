@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  NameDetailDrawer,
+} from '@/features/names/components/NameDetailDrawer'
+import {
   NamesFilterBar,
 } from '@/features/names/components/NamesFilterBar'
 import { NamesTable } from '@/features/names/components/NamesTable'
@@ -17,12 +20,13 @@ import {
   sortTerritoryOptions,
   type NamesFilterState,
 } from '@/features/names/filters'
-import { useRunNamesQuery } from '@/features/names/queries'
+import { usePatchNameCandidateMutation, useRunNamesQuery } from '@/features/names/queries'
 import { useProjectDetailQuery } from '@/features/projects/queries'
 import { useRunStatusQuery } from '@/features/runs/queries'
 import { useVersionDetailQuery } from '@/features/versions/queries'
 import { type NameCandidateResponse, getErrorMessage, type RunState } from '@/lib/api'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { toast } from '@/hooks/use-toast'
 
 function subscribeDesktop(callback: () => void): () => void {
   if (typeof window === 'undefined') {
@@ -206,9 +210,15 @@ export function GenerationReviewPage() {
   )
 
   const [filters, setFilters] = useState<NamesFilterState>(() => createDefaultNamesFilters())
+  const [selectedNameId, setSelectedNameId] = useState<string | null>(null)
+  const patchNameCandidateMutation = usePatchNameCandidateMutation()
   const debouncedSearch = useDebouncedValue(filters.search, 300)
 
   const allNames = namesQuery.data?.items ?? EMPTY_NAMES
+  const selectedNameCandidate = useMemo(
+    () => allNames.find((candidate) => candidate.id === selectedNameId) ?? null,
+    [allNames, selectedNameId],
+  )
   const territoryOptions = useMemo(() => sortTerritoryOptions(allNames), [allNames])
 
   const scoreRange = useMemo(() => getNamesFilterScoreRange(filters), [filters])
@@ -295,6 +305,56 @@ export function GenerationReviewPage() {
   ]
 
   const isNamesLoading = namesQuery.isLoading || (namesQuery.isFetching && !namesQuery.data)
+
+  const handleToggleShortlisted = (candidate: NameCandidateResponse) => {
+    if (!runId) {
+      return
+    }
+
+    patchNameCandidateMutation.mutate(
+      {
+        nameId: candidate.id,
+        runId,
+        patch: {
+          shortlisted: !candidate.shortlisted,
+        },
+      },
+      {
+        onError: (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to update shortlist',
+            description: getErrorMessage(error, 'Please try again.'),
+          })
+        },
+      },
+    )
+  }
+
+  const handleToggleSelectedForClearance = (candidate: NameCandidateResponse) => {
+    if (!runId) {
+      return
+    }
+
+    patchNameCandidateMutation.mutate(
+      {
+        nameId: candidate.id,
+        runId,
+        patch: {
+          selected_for_clearance: !candidate.selected_for_clearance,
+        },
+      },
+      {
+        onError: (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to update clearance selection',
+            description: getErrorMessage(error, 'Please try again.'),
+          })
+        },
+      },
+    )
+  }
 
   if (!projectId || !versionId) {
     return (
@@ -481,9 +541,14 @@ export function GenerationReviewPage() {
           onClearFilters={() => {
             setFilters(createDefaultNamesFilters())
           }}
+          onRowClick={(candidate) => {
+            setSelectedNameId(candidate.id)
+          }}
           onRetry={() => {
             void namesQuery.refetch()
           }}
+          onToggleSelectedForClearance={handleToggleSelectedForClearance}
+          onToggleShortlisted={handleToggleShortlisted}
         />
       </div>
 
@@ -499,6 +564,19 @@ export function GenerationReviewPage() {
           </p>
         </div>
       </div>
+
+      <NameDetailDrawer
+        candidate={selectedNameCandidate}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setSelectedNameId(null)
+          }
+        }}
+        onToggleSelectedForClearance={handleToggleSelectedForClearance}
+        onToggleShortlisted={handleToggleShortlisted}
+        open={selectedNameId !== null}
+        runId={runId}
+      />
     </section>
   )
 }

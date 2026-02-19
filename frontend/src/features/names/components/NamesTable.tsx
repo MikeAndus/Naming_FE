@@ -16,6 +16,9 @@ interface NamesTableProps {
   hasActiveFilters: boolean
   onRetry: () => void
   onClearFilters: () => void
+  onRowClick?: (candidate: NameCandidateResponse) => void
+  onToggleShortlisted?: (candidate: NameCandidateResponse) => void
+  onToggleSelectedForClearance?: (candidate: NameCandidateResponse) => void
 }
 
 function formatFamilyLabel(value: string): string {
@@ -104,6 +107,9 @@ export function NamesTable({
   hasActiveFilters,
   onRetry,
   onClearFilters,
+  onRowClick,
+  onToggleShortlisted,
+  onToggleSelectedForClearance,
 }: NamesTableProps) {
   if (isLoading) {
     return <TableSkeleton />
@@ -159,20 +165,63 @@ export function NamesTable({
           const compositeScore = getCompositeScore(candidate)
 
           return (
-            <tr className="border-b align-top hover:bg-muted/30" key={candidate.id}>
+            <tr
+              className={cn(
+                'border-b align-top hover:bg-muted/30',
+                onRowClick ? 'cursor-pointer' : '',
+              )}
+              key={candidate.id}
+              onClick={() => {
+                onRowClick?.(candidate)
+              }}
+            >
               <td className="px-2 py-2 text-center">
-                <Star
-                  className={cn(
-                    'mx-auto h-4 w-4',
-                    candidate.shortlisted
-                      ? 'fill-amber-400 text-amber-500'
-                      : 'fill-transparent text-muted-foreground',
-                  )}
-                />
+                <Button
+                  className="h-7 w-7"
+                  disabled={!onToggleShortlisted}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onToggleShortlisted?.(candidate)
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation()
+                  }}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Star
+                    className={cn(
+                      'h-4 w-4',
+                      candidate.shortlisted
+                        ? 'fill-amber-400 text-amber-500'
+                        : 'fill-transparent text-muted-foreground',
+                    )}
+                  />
+                </Button>
               </td>
 
               <td className="px-2 py-2 text-center">
-                <Checkbox checked={candidate.selected_for_clearance} disabled />
+                <div
+                  onClick={(event) => {
+                    event.stopPropagation()
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation()
+                  }}
+                >
+                  <Checkbox
+                    checked={candidate.selected_for_clearance}
+                    disabled={!onToggleSelectedForClearance}
+                    onCheckedChange={(checked) => {
+                      const nextValue = checked === true
+                      if (nextValue === candidate.selected_for_clearance) {
+                        return
+                      }
+                      onToggleSelectedForClearance?.(candidate)
+                    }}
+                  />
+                </div>
               </td>
 
               <td className="px-2 py-2 text-right text-sm text-muted-foreground">
