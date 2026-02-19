@@ -49,6 +49,34 @@ export {
   type StartRunRequestBody,
 } from '@/lib/api/runs.types'
 export {
+  listRunNames,
+  patchNameCandidate,
+  triggerRunDeepClearance,
+} from '@/lib/api/names'
+export type {
+  DeepClearanceTriggerResponse,
+  FastClearance,
+  FastClearancePending,
+  FastClearanceSuccess,
+  FastClearanceSuccessStatus,
+  FastClearanceUnknown,
+  NameCandidateListQueryParams,
+  NameCandidateListResponse,
+  NameCandidatePatchRequest,
+  NameCandidatePatchResponse,
+  NameCandidateResponse,
+  NameCandidateScores,
+  NameCandidateScoresCore,
+  NameCandidateSortBy,
+  NameCandidateSortDirection,
+  NameFamily,
+  NameFormat,
+} from '@/lib/api/names.types'
+export {
+  DEFAULT_RUN_NAMES_LIST_LIMIT,
+  DEFAULT_RUN_NAMES_LIST_OFFSET,
+} from '@/lib/api/names.types'
+export {
   addTerritoryCard,
   confirmTerritoryCards,
   getResearchSnapshot,

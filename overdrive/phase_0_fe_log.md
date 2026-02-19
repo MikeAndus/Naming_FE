@@ -1173,3 +1173,46 @@
   - `cd ../Naming_BE && python3 -m py_compile api/services/version_service.py` (pass)
 - Manual runtime:
   - User confirmed Start Run now succeeds (no recurring 422).
+
+## 2026-02-19 14:32 GMT - Generation Review names API layer (types + hooks + optimistic cache)
+
+### Summary
+- Added strict frontend API contract types for Generation Review name candidates, including:
+  - list envelope (`{ items, total }`)
+  - server-side names list query params (filters, sorting, pagination)
+  - curation patch request restricted to `shortlisted`, `notes`, `selected_for_clearance`, `rank`
+  - deep-clearance trigger response (`selected_count`)
+- Added thin API wrappers for:
+  - `GET /api/v1/runs/{runId}/names`
+  - `PATCH /api/v1/names/{nameId}`
+  - `POST /api/v1/runs/{runId}/deep-clearance`
+- Added TanStack Query hooks for Generation Review data access:
+  - `useRunNamesQuery(runId, params?, options?)`
+  - `useRunNamesAllQuery(runId, params?, options?)` (defaults to `limit=100`, `offset=0`)
+  - `usePatchNameCandidateMutation()`
+  - `useRunDeepClearanceMutation()`
+- Added reusable optimistic cache utilities for shortlist and selected-for-clearance toggles with rollback support across all cached names queries for the same run.
+
+### Files created/modified
+- `frontend/src/lib/api/names.types.ts`
+- `frontend/src/lib/api/names.ts`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/features/names/queries.ts`
+- `frontend/src/lib/api/index.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### Design decisions
+- Query key strategy is run-scoped and param-scoped: `['names','run',runId,normalizedParams]`, with run-prefix helpers for broad invalidation/optimistic updates.
+- Optimistic toggle helpers update every cached names list for `runId` (including different filter/sort/pagination variants), store per-query snapshots, and provide rollback context consumed by mutation `onError`.
+- Patch mutation applies optimistic updates only for boolean toggles (`shortlisted`, `selected_for_clearance`) and merges server response into all run caches on success for canonical row data.
+- Errors continue using shared `ApiError` handling from the common client layer; no endpoint-specific auth or custom error wrappers were introduced.
+
+### Manual sanity-check notes
+- Use React Query Devtools while toggling shortlist/selected-for-clearance to confirm all cached run-name query variants update immediately and roll back on forced mutation failure.
+- Call `useRunNamesAllQuery(runId)` to fetch the full Generation Review set in one request (`limit=100, offset=0`).
+- Confirm deep-clearance mutation returns `selected_count` from server response and that run-scoped names queries invalidate after success.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
