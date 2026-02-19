@@ -65,6 +65,10 @@ export interface CancelRunResponse {
   cancelled: boolean
 }
 
+export interface DeepClearanceTriggerResponse {
+  selected_count: number
+}
+
 type BaseSSEEvent<TEventType extends RunSSEEventType, TData> = {
   event_type: TEventType
   timestamp: string

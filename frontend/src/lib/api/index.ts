@@ -35,10 +35,12 @@ export {
   parseSseEventData,
   retryRun,
   startRun,
+  triggerRunDeepClearance,
 } from '@/lib/api/runs'
 export {
   RUN_SSE_EVENT_TYPES,
   type CancelRunResponse,
+  type DeepClearanceTriggerResponse,
   type RunSSEEventType,
   type RunState,
   type RunStatusResponse,
@@ -51,10 +53,8 @@ export {
 export {
   listRunNames,
   patchNameCandidate,
-  triggerRunDeepClearance,
 } from '@/lib/api/names'
 export type {
-  DeepClearanceTriggerResponse,
   FastClearance,
   FastClearancePending,
   FastClearanceSuccess,

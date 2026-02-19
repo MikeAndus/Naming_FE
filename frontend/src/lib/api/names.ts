@@ -2,7 +2,6 @@ import { request } from '@/lib/api/client'
 import {
   DEFAULT_RUN_NAMES_LIST_LIMIT,
   DEFAULT_RUN_NAMES_LIST_OFFSET,
-  type DeepClearanceTriggerResponse,
   type NameCandidateListQueryParams,
   type NameCandidateListResponse,
   type NameCandidatePatchRequest,
@@ -58,17 +57,6 @@ export async function patchNameCandidate(
     {
       method: 'PATCH',
       body: patch,
-    },
-  )
-}
-
-export async function triggerRunDeepClearance(
-  runId: string,
-): Promise<DeepClearanceTriggerResponse> {
-  return request<DeepClearanceTriggerResponse>(
-    `/runs/${encodeURIComponent(runId)}/deep-clearance`,
-    {
-      method: 'POST',
     },
   )
 }

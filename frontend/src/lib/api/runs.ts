@@ -1,6 +1,7 @@
 import { getApiV1BaseUrl, request } from '@/lib/api/client'
 import type {
   CancelRunResponse,
+  DeepClearanceTriggerResponse,
   RunSSEEventType,
   RunState,
   RunStatusResponse,
@@ -395,6 +396,14 @@ export async function retryRun(runId: string): Promise<RunStatusResponse> {
     method: 'POST',
   })
   return parseRunStatusResponse(response)
+}
+
+export async function triggerRunDeepClearance(
+  runId: string,
+): Promise<DeepClearanceTriggerResponse> {
+  return request<DeepClearanceTriggerResponse>(`/runs/${encodeURIComponent(runId)}/deep-clearance`, {
+    method: 'POST',
+  })
 }
 
 export function createRunProgressEventSource(runId: string): EventSource {

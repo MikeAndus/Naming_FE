@@ -1,10 +1,17 @@
 import { useMemo, useState, useSyncExternalStore } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  DeepClearanceActionBar,
+} from '@/features/names/components/DeepClearanceActionBar'
+import {
+  DeepClearanceConfirmDialog,
+} from '@/features/names/components/DeepClearanceConfirmDialog'
 import {
   NameDetailDrawer,
 } from '@/features/names/components/NameDetailDrawer'
@@ -20,10 +27,18 @@ import {
   sortTerritoryOptions,
   type NamesFilterState,
 } from '@/features/names/filters'
-import { usePatchNameCandidateMutation, useRunNamesQuery } from '@/features/names/queries'
-import { useProjectDetailQuery } from '@/features/projects/queries'
-import { useRunStatusQuery } from '@/features/runs/queries'
-import { useVersionDetailQuery } from '@/features/versions/queries'
+import {
+  usePatchNameCandidateMutation,
+  useRunDeepClearanceMutation,
+  useRunNamesQuery,
+} from '@/features/names/queries'
+import { projectDetailQueryKey, useProjectDetailQuery } from '@/features/projects/queries'
+import { runStatusQueryKey, useRunStatusQuery } from '@/features/runs/queries'
+import {
+  projectVersionsQueryKey,
+  useVersionDetailQuery,
+  versionDetailQueryKey,
+} from '@/features/versions/queries'
 import { type NameCandidateResponse, getErrorMessage, type RunState } from '@/lib/api'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { toast } from '@/hooks/use-toast'
@@ -171,6 +186,8 @@ const EMPTY_NAMES: NameCandidateResponse[] = []
 
 export function GenerationReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const isDesktop = useIsDesktop()
 
   const resolvedProjectId = projectId && isDesktop ? projectId : undefined
@@ -211,7 +228,9 @@ export function GenerationReviewPage() {
 
   const [filters, setFilters] = useState<NamesFilterState>(() => createDefaultNamesFilters())
   const [selectedNameId, setSelectedNameId] = useState<string | null>(null)
+  const [isDeepClearanceDialogOpen, setIsDeepClearanceDialogOpen] = useState(false)
   const patchNameCandidateMutation = usePatchNameCandidateMutation()
+  const deepClearanceMutation = useRunDeepClearanceMutation()
   const debouncedSearch = useDebouncedValue(filters.search, 300)
 
   const allNames = namesQuery.data?.items ?? EMPTY_NAMES
@@ -285,7 +304,14 @@ export function GenerationReviewPage() {
   const totalCount = namesQuery.data?.total ?? allNames.length
   const showingCount = filteredNames.length
   const starredCount = filteredNames.filter((candidate) => candidate.shortlisted).length
-  const selectedCount = filteredNames.filter((candidate) => candidate.selected_for_clearance).length
+  const selectedVisibleCount = filteredNames.filter(
+    (candidate) => candidate.selected_for_clearance,
+  ).length
+  const selectedForClearanceNames = useMemo(
+    () => allNames.filter((candidate) => candidate.selected_for_clearance),
+    [allNames],
+  )
+  const selectedForClearanceCount = selectedForClearanceNames.length
 
   const hasActiveFilters = isNamesFilterStateActive(filters)
 
@@ -305,6 +331,7 @@ export function GenerationReviewPage() {
   ]
 
   const isNamesLoading = namesQuery.isLoading || (namesQuery.isFetching && !namesQuery.data)
+  const isDeepClearanceRunStateEligible = runStatusQuery.data?.state === 'generation_review'
 
   const handleToggleShortlisted = (candidate: NameCandidateResponse) => {
     if (!runId) {
@@ -349,6 +376,59 @@ export function GenerationReviewPage() {
           toast({
             variant: 'destructive',
             title: 'Failed to update clearance selection',
+            description: getErrorMessage(error, 'Please try again.'),
+          })
+        },
+      },
+    )
+  }
+
+  const handleRunDeepClearance = () => {
+    if (!runId || !isDeepClearanceRunStateEligible) {
+      return
+    }
+
+    deepClearanceMutation.mutate(
+      {
+        runId,
+      },
+      {
+        onSuccess: (response) => {
+          setIsDeepClearanceDialogOpen(false)
+          toast({
+            title: 'Deep clearance started',
+            description: `Running deep clearance on ${response.selected_count} names.`,
+          })
+
+          void queryClient.invalidateQueries({
+            queryKey: runStatusQueryKey(runId),
+            exact: true,
+          })
+
+          if (versionId) {
+            void queryClient.invalidateQueries({
+              queryKey: versionDetailQueryKey(versionId),
+              exact: true,
+            })
+          }
+
+          if (projectId) {
+            void queryClient.invalidateQueries({
+              queryKey: projectDetailQueryKey(projectId),
+              exact: true,
+            })
+            void queryClient.invalidateQueries({
+              queryKey: projectVersionsQueryKey(projectId),
+              exact: true,
+            })
+          }
+
+          navigate(runMonitorHref)
+        },
+        onError: (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to run deep clearance',
             description: getErrorMessage(error, 'Please try again.'),
           })
         },
@@ -523,7 +603,7 @@ export function GenerationReviewPage() {
           onClearAll={() => {
             setFilters(createDefaultNamesFilters())
           }}
-          selectedCount={selectedCount}
+          selectedCount={selectedVisibleCount}
           showingCount={showingCount}
           starredCount={starredCount}
           territoryOptions={territoryOptions}
@@ -556,14 +636,25 @@ export function GenerationReviewPage() {
         USPTO screening results are for knockout purposes only and do not constitute legal advice.
       </p>
 
-      <div className="sticky bottom-0 z-20 shrink-0 rounded-lg border bg-background/95 px-4 py-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">Action bar (coming next)</p>
-          <p className="text-sm text-muted-foreground">
-            Showing {showingCount} of {totalCount}
-          </p>
-        </div>
-      </div>
+      <DeepClearanceActionBar
+        isPending={deepClearanceMutation.isPending}
+        isRunStateEligible={isDeepClearanceRunStateEligible}
+        onRunDeepClearance={() => {
+          setIsDeepClearanceDialogOpen(true)
+        }}
+        selectedCount={selectedForClearanceCount}
+        showingCount={showingCount}
+        totalCount={totalCount}
+      />
+
+      <DeepClearanceConfirmDialog
+        isPending={deepClearanceMutation.isPending}
+        isRunStateEligible={isDeepClearanceRunStateEligible}
+        onConfirm={handleRunDeepClearance}
+        onOpenChange={setIsDeepClearanceDialogOpen}
+        open={isDeepClearanceDialogOpen}
+        selectedNames={selectedForClearanceNames}
+      />
 
       <NameDetailDrawer
         candidate={selectedNameCandidate}

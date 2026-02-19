@@ -1371,3 +1371,57 @@
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-19 15:32 GMT - Generation Review deep clearance action bar + confirmation dialog
+
+### Files added/modified
+- `frontend/src/features/names/components/DeepClearanceActionBar.tsx`
+- `frontend/src/features/names/components/DeepClearanceConfirmDialog.tsx`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/lib/api/runs.ts`
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/lib/api/names.ts`
+- `frontend/src/lib/api/index.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### Deep clearance API endpoint
+- `POST /api/v1/runs/{run_id}/deep-clearance`
+
+### What changed
+- Replaced the Generation Review bottom placeholder with a sticky action bar:
+  - left summary: `Showing X of total`
+  - right CTA: `Run deep clearance on N names`
+- `N` is derived from all loaded run names with `selected_for_clearance === true` (not just filtered-visible rows).
+- Added a confirmation dialog that lists selected names (`name_text`) in a bounded scroll region (`max-height` + `overflow-y-auto`) to prevent unbounded modal growth.
+- Confirm action triggers deep clearance mutation; cancel closes dialog with no side effects.
+
+### Gating behavior
+- CTA is disabled when `N === 0`.
+  - Disabled-button tooltip message: `Select at least one name for deep clearance`.
+- CTA is disabled when run state is not `generation_review` (including `phase_3_running` and all other non-`generation_review` states).
+- Curation controls remain enabled regardless of run-state gating (shortlist, notes autosave, per-row selection toggles).
+
+### Success/error flow
+- On success:
+  - success toast shown
+  - navigates to Run Monitor route: `/projects/:projectId/versions/:versionId/run`
+- On error (including HTTP 409):
+  - destructive toast shows backend `detail` via shared `getErrorMessage(...)` parsing.
+
+### Query invalidations
+- Existing deep-clearance mutation hook invalidates run-scoped names queries to reconcile list data.
+- Route-level success handler additionally invalidates:
+  - `runStatusQueryKey(runId)`
+  - `versionDetailQueryKey(versionId)`
+  - `projectDetailQueryKey(projectId)`
+  - `projectVersionsQueryKey(projectId)`
+- Rationale: ensure run/version/project state is refreshed immediately before/after redirecting to Run Monitor.
+
+### API layer alignment
+- Added typed deep-clearance response to runs types and moved deep-clearance POST helper into `frontend/src/lib/api/runs.ts`.
+- `frontend/src/lib/api/index.ts` now exports deep-clearance API from runs module.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
