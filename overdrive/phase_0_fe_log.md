@@ -1680,3 +1680,73 @@
   3) On stage 10 completion, verify summary shows domain status counts (`available/taken/unknown`).
   4) On stage 11 completion, verify summary shows per-platform rollups and page auto-redirects to `/projects/<projectId>/versions/<versionId>/results`.
   5) During active Phase 3 stages, verify the Active stage summary card updates label, progress, and activity copy live.
+
+## 2026-02-20 11:26 GMT - Phase 10 FE discovery pass + shared UI primitives/utilities foundation
+
+### Discovery summary (files inspected + observed patterns)
+- Routes/router:
+  - inspected `frontend/src/app/router.tsx` and route files under `frontend/src/routes/*` (`ProjectsPage`, `ProjectDetailPage`, `VersionBuilderPage`, `RunMonitorPage`, `TerritoryReviewPage`, `GenerationReviewPage`, `VersionPlaceholderPage`).
+  - observed route organization is strictly `routes/` (no `pages/`), with nested `/projects/*` routing and desktop gating implemented per-route where needed.
+- Shared components:
+  - inspected `frontend/src/components/ui/*` and `frontend/src/components/app/Breadcrumbs.tsx`.
+  - observed shadcn primitives + `cn(...)` composition style; `components/app` currently uses direct-path imports (no app-level barrel file).
+- Feature-level status/loading patterns:
+  - inspected names components (`FastClearanceBadge`, `DeepClearanceBadges`, `NamesTable`, `NameDetailDrawer`) and territory badge `frontend/src/features/territoryReview/components/TerritoryCardStatusBadge.tsx`.
+  - observed repeated ad-hoc badge color mapping, local skeleton blocks, and inline empty/error cards across feature/routes (good candidates for shared Phase 10 primitives).
+- Hooks:
+  - inspected `frontend/src/hooks/use-debounced-value.ts` and `frontend/src/hooks/use-toast.ts`.
+  - observed hooks are small/single-purpose with explicit typing and no extra abstraction layers.
+- API client organization:
+  - inspected `frontend/src/lib/api/client.ts`, `frontend/src/lib/api/index.ts`, `frontend/src/lib/api/names.types.ts`, `frontend/src/lib/api/runs.types.ts`.
+  - confirmed shared `request(...)` has no auth/token headers and there is no FE auth flow/guard wiring in API layer.
+
+### Files added
+- `frontend/src/components/app/StatusBadge.tsx`
+- `frontend/src/components/app/SkeletonSection.tsx`
+- `frontend/src/components/app/EmptyState.tsx`
+- `frontend/src/components/app/InlineBanner.tsx`
+- `frontend/src/lib/status/clearance.ts`
+- `frontend/src/lib/status/social.ts`
+- `frontend/src/lib/status/index.ts`
+
+### Decisions made
+- Placement:
+  - new UI primitives were added under `frontend/src/components/app/*` to stay aligned with existing shared-app component placement (`Breadcrumbs`).
+  - status-only formatting/normalization logic was added under `frontend/src/lib/status/*` to keep domain formatting separate from UI rendering.
+- Canonical clearance mapping:
+  - canonical UI statuses are `G | A | R | Unknown | Pending`.
+  - `normalizeClearanceStatus(...)` accepts `string | null | undefined`, trims + case-normalizes, supports common aliases (`green`, `amber`, `red`, `queued`, `in_progress`, etc.), and maps all unrecognized values to `Unknown`.
+- Canonical social mapping:
+  - canonical social statuses are `Clear | Busy | Mixed | Unknown | Pending`.
+  - `normalizeSocialStatus(...)` applies the same safe normalization behavior (`string | null | undefined` -> canonical status, unknown -> `Unknown`).
+  - `formatSocialStatusSummary(...)` generates a deterministic concise summary string and falls back to `—` when input is empty/missing.
+
+### Edge cases handled
+- Clearance/social normalization handles:
+  - null/undefined/non-string status inputs.
+  - whitespace/casing/punctuation variants.
+  - unexpected values without throwing (safe fallback to `Unknown`).
+- Social summary handles:
+  - undefined/empty platform arrays.
+  - optional max-items truncation with `+N more` suffix.
+  - stable ordering by platform label for deterministic output.
+
+### How to use (imports + main props)
+- `StatusBadge`
+  - import: `@/components/app/StatusBadge`
+  - props: `status`, optional `labelOverride`, optional `showIcon`, optional `className`
+- `SkeletonSection`
+  - import: `@/components/app/SkeletonSection`
+  - props: optional `showHeader`, optional `showHeaderAction`, optional `rowCount`, optional `rows`, optional `rowClassName`
+- `EmptyState`
+  - import: `@/components/app/EmptyState`
+  - props: `title`, optional `description`, optional `icon`, optional `cta`
+- `InlineBanner`
+  - import: `@/components/app/InlineBanner`
+  - props: optional `variant` (`info | warning | destructive`), optional `title`, optional `description`, optional `icon`, optional `action`
+- Status utilities
+  - import: `@/lib/status/clearance` (or `@/lib/status`)
+  - functions: `normalizeClearanceStatus`, `getClearanceStatusLabel`, `getClearanceStatusTone`
+- Social utilities
+  - import: `@/lib/status/social` (or `@/lib/status`)
+  - functions: `normalizeSocialStatus`, `formatSocialStatusSummary`
