@@ -1593,3 +1593,45 @@
 
 ### Notes
 - Interactive browser/SSE runtime verification is still required locally against a live backend stream in this environment.
+
+## 2026-02-20 09:05 GMT - Deep clearance filter groups for trademark/domain in Names filter bar
+
+### Files changed
+- `frontend/src/features/names/filters.ts`
+- `frontend/src/features/names/components/NamesFilterBar.tsx`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Summary
+- Extended `NamesFilterState` with:
+  - `deepTrademarkStatuses: Array<'green' | 'amber' | 'red' | 'unknown'>`
+  - `domainStatuses: Array<'available' | 'taken' | 'unknown'>`
+- Updated filter defaults and active-filter detection to include both new fields.
+- Added shared `filterNameCandidates(...)` in `filters.ts` and moved names filtering semantics into that helper.
+- Added deep-clearance filter semantics:
+  - trademark filter matches only `candidate.deep_clearance?.trademark?.status`
+  - domain filter matches only `candidate.deep_clearance?.domain?.status`
+  - missing `deep_clearance` / missing subobjects do not match (including when `unknown` is selected).
+- Updated `NamesFilterBar` with new prop `showDeepClearanceFilters` and two conditional filter groups:
+  - `Deep trademark` (`green`, `amber`, `red`, `unknown`)
+  - `Domain` (`available`, `taken`, `unknown`)
+- Updated `GenerationReviewPage` to:
+  - compute `hasAnyDeepClearance` from loaded names via `hasDeepClearanceData(...)`
+  - pass `showDeepClearanceFilters={hasAnyDeepClearance}` to `NamesFilterBar`
+  - apply shared `filterNameCandidates(...)` logic before sorting.
+
+### Verification
+- Executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- Manual logic verification performed in code paths:
+  1) When all loaded candidates have `deep_clearance: null` (or no trademark/domain payload), `hasAnyDeepClearance` remains false and deep filter groups are hidden.
+  2) When any candidate receives deep-clearance data (including via SSE-driven cache updates), `hasAnyDeepClearance` becomes true and both groups render without refresh.
+  3) Selecting deep trademark or domain values filters by exact deep status only and combines with existing family/format/territory/search/score/fast-clearance/starred filters with AND semantics.
+
+### Edge cases considered
+- Partial deep clearance payload:
+  - trademark present + domain missing: trademark filter can match; domain filter cannot match that row.
+  - domain present + trademark missing: domain filter can match; trademark filter cannot match that row.
+- `unknown` filter values are matched only when backend status is explicitly `unknown`, not when deep-clearance fields are absent.

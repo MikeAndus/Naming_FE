@@ -11,6 +11,7 @@ interface NamesFilterBarProps {
   onChange: (updater: (current: NamesFilterState) => NamesFilterState) => void
   onClearAll: () => void
   hasActiveFilters: boolean
+  showDeepClearanceFilters: boolean
   totalResults: number
   showingCount: number
   starredCount: number
@@ -23,6 +24,17 @@ const CLEARANCE_OPTIONS: NamesFilterState['clearanceStatuses'] = [
   'green',
   'amber',
   'red',
+  'unknown',
+]
+const DEEP_TRADEMARK_OPTIONS: NamesFilterState['deepTrademarkStatuses'] = [
+  'green',
+  'amber',
+  'red',
+  'unknown',
+]
+const DOMAIN_OPTIONS: NamesFilterState['domainStatuses'] = [
+  'available',
+  'taken',
   'unknown',
 ]
 
@@ -82,6 +94,7 @@ export function NamesFilterBar({
   onChange,
   onClearAll,
   hasActiveFilters,
+  showDeepClearanceFilters,
   totalResults,
   showingCount,
   starredCount,
@@ -151,6 +164,37 @@ export function NamesFilterBar({
           selectedValues={filters.clearanceStatuses}
           title="Fast clearance"
         />
+
+        {showDeepClearanceFilters ? (
+          <FilterGroup
+            onToggle={(value) => {
+              onChange((current) => ({
+                ...current,
+                deepTrademarkStatuses: toggleValue(
+                  current.deepTrademarkStatuses,
+                  value as 'green' | 'amber' | 'red' | 'unknown',
+                ),
+              }))
+            }}
+            options={DEEP_TRADEMARK_OPTIONS}
+            selectedValues={filters.deepTrademarkStatuses}
+            title="Deep trademark"
+          />
+        ) : null}
+
+        {showDeepClearanceFilters ? (
+          <FilterGroup
+            onToggle={(value) => {
+              onChange((current) => ({
+                ...current,
+                domainStatuses: toggleValue(current.domainStatuses, value as 'available' | 'taken' | 'unknown'),
+              }))
+            }}
+            options={DOMAIN_OPTIONS}
+            selectedValues={filters.domainStatuses}
+            title="Domain"
+          />
+        ) : null}
 
         <div className="space-y-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Shortlisted</p>

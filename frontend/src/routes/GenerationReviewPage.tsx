@@ -19,9 +19,10 @@ import {
   NamesFilterBar,
 } from '@/features/names/components/NamesFilterBar'
 import { NamesTable } from '@/features/names/components/NamesTable'
-import { getNormalizedFastClearanceStatus } from '@/features/names/fast-clearance'
+import { hasDeepClearanceData } from '@/features/names/deep-clearance'
 import {
   createDefaultNamesFilters,
+  filterNameCandidates,
   getNamesFilterScoreRange,
   isNamesFilterStateActive,
   sortTerritoryOptions,
@@ -254,67 +255,16 @@ export function GenerationReviewPage() {
     [allNames, selectedNameId],
   )
   const territoryOptions = useMemo(() => sortTerritoryOptions(allNames), [allNames])
+  const hasAnyDeepClearance = useMemo(
+    () => allNames.some((candidate) => hasDeepClearanceData(candidate.deep_clearance)),
+    [allNames],
+  )
 
   const scoreRange = useMemo(() => getNamesFilterScoreRange(filters), [filters])
 
   const filteredNames = useMemo(() => {
-    const searchValue = debouncedSearch.trim().toLowerCase()
-
-    return allNames
-      .filter((candidate) => {
-        if (searchValue && !candidate.name_text.toLowerCase().includes(searchValue)) {
-          return false
-        }
-
-        if (filters.families.length > 0 && !filters.families.includes(candidate.family)) {
-          return false
-        }
-
-        if (
-          filters.territories.length > 0 &&
-          !filters.territories.includes(candidate.territory_card_id)
-        ) {
-          return false
-        }
-
-        if (filters.formats.length > 0 && !filters.formats.includes(candidate.format)) {
-          return false
-        }
-
-        if (filters.shortlistedOnly && !candidate.shortlisted) {
-          return false
-        }
-
-        const clearanceStatus = getNormalizedFastClearanceStatus(candidate.fast_clearance)
-        if (
-          filters.clearanceStatuses.length > 0 &&
-          !filters.clearanceStatuses.includes(clearanceStatus)
-        ) {
-          return false
-        }
-
-        const score = getCompositeScore(candidate)
-        if (scoreRange.min !== null && score < scoreRange.min) {
-          return false
-        }
-        if (scoreRange.max !== null && score > scoreRange.max) {
-          return false
-        }
-
-        return true
-      })
-      .sort(compareNameCandidates)
-  }, [
-    allNames,
-    debouncedSearch,
-    filters.clearanceStatuses,
-    filters.families,
-    filters.formats,
-    filters.shortlistedOnly,
-    filters.territories,
-    scoreRange.max,
-    scoreRange.min,
-  ])
+    return filterNameCandidates(allNames, filters, debouncedSearch, scoreRange).sort(compareNameCandidates)
+  }, [allNames, debouncedSearch, filters, scoreRange])
 
   const totalCount = namesQuery.data?.total ?? allNames.length
   const showingCount = filteredNames.length
@@ -657,6 +607,7 @@ export function GenerationReviewPage() {
             setFilters(createDefaultNamesFilters())
           }}
           selectedCount={selectedVisibleCount}
+          showDeepClearanceFilters={hasAnyDeepClearance}
           showingCount={showingCount}
           starredCount={starredCount}
           territoryOptions={territoryOptions}
