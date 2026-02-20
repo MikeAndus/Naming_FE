@@ -211,6 +211,9 @@ export function GenerationReviewPage() {
   const runMonitorHref = `${versionBuilderHref}/run`
   const territoryReviewHref = `${versionBuilderHref}/territory-review`
   const resultsHref = `${versionBuilderHref}/results`
+  const executiveSummaryHref = runId
+    ? `${versionBuilderHref}/runs/${runId}/executive-summary`
+    : null
 
   const runProgress = useRunProgress({
     runId: isDesktop && runId ? runId : null,
@@ -590,8 +593,16 @@ export function GenerationReviewPage() {
                 </div>
               </div>
 
-              <div className="text-sm text-muted-foreground">
-                Showing {showingCount} of {totalCount}
+              <div className="flex flex-wrap items-center gap-2">
+                {executiveSummaryHref ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={executiveSummaryHref}>Executive Summary</Link>
+                  </Button>
+                ) : null}
+
+                <div className="text-sm text-muted-foreground">
+                  Showing {showingCount} of {totalCount}
+                </div>
               </div>
             </div>
           </CardHeader>

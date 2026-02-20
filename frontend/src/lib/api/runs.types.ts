@@ -174,29 +174,29 @@ export interface StartRunRequestBody {
 }
 
 export interface ExecutiveSummaryBriefSnapshot {
-  brief: Record<string, unknown> | null
-  dials: Record<string, unknown> | null
+  brief?: Record<string, unknown> | null
+  dials?: Record<string, unknown> | null
 }
 
 export interface ExecutiveSummaryRunSettingsSnapshot {
-  run_state: RunState
-  current_stage: string | null
-  started_at: string | null
-  completed_at: string | null
-  progress: Record<string, unknown>
-  version_dials: Record<string, unknown> | null
+  run_state?: RunState | string
+  current_stage?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  progress?: Record<string, unknown>
+  version_dials?: Record<string, unknown> | null
 }
 
 export interface ExecutiveSummaryConstraintShortfallsSnapshot {
-  from_progress: Record<string, unknown> | null
-  from_stage8_artifacts: Record<string, unknown> | null
+  from_progress?: Record<string, unknown> | null
+  from_stage8_artifacts?: Record<string, unknown> | null
 }
 
 export interface ExecutiveSummaryResponse {
   run_id: string
-  brief_snapshot: ExecutiveSummaryBriefSnapshot
-  research_snapshot: Record<string, unknown>
-  approved_territory_cards: TerritoryCard[]
-  run_settings: ExecutiveSummaryRunSettingsSnapshot
-  constraint_shortfalls: ExecutiveSummaryConstraintShortfallsSnapshot
+  brief_snapshot?: ExecutiveSummaryBriefSnapshot | null
+  research_snapshot?: Record<string, unknown> | null
+  approved_territory_cards?: TerritoryCard[] | null
+  run_settings?: ExecutiveSummaryRunSettingsSnapshot | null
+  constraint_shortfalls?: ExecutiveSummaryConstraintShortfallsSnapshot | null
 }

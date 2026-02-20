@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { projectDetailQueryKey } from '@/features/projects/queries'
+import { runsKeys } from '@/features/runs/queryKeys'
 import {
   projectVersionsQueryKey,
   projectVersionsQueryKeyPrefix,
@@ -8,7 +9,7 @@ import {
 } from '@/features/versions/queries'
 import {
   cancelRun,
-  getExecutiveSummary,
+  getRunExecutiveSummary,
   getRunStatus,
   retryRun,
   startRun,
@@ -19,8 +20,8 @@ import {
   type RunSummaryResponse,
 } from '@/lib/api'
 
-export const runStatusQueryKey = (runId: string) => ['runs', 'status', runId] as const
-export const execSummaryQueryKey = (runId: string) => ['run', runId, 'exec-summary'] as const
+export const runStatusQueryKey = runsKeys.status
+export const execSummaryQueryKey = runsKeys.executiveSummary
 
 export function isTerminalRunState(state: RunState): boolean {
   return state === 'complete' || state === 'failed'
@@ -48,13 +49,15 @@ export function useRunStatusQuery(runId: string | undefined) {
 export function useExecutiveSummaryQuery(runId: string | undefined) {
   return useQuery<ExecutiveSummaryResponse>({
     queryKey: runId ? execSummaryQueryKey(runId) : ['run', 'missing-id', 'exec-summary'],
-    queryFn: () => getExecutiveSummary(runId as string),
+    queryFn: () => getRunExecutiveSummary(runId as string),
     enabled: Boolean(runId),
     meta: {
       suppressGlobalErrorToast: true,
     },
   })
 }
+
+export const useRunExecutiveSummaryQuery = useExecutiveSummaryQuery
 
 export interface StartRunVariables {
   projectId: string

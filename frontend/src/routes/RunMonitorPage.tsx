@@ -739,6 +739,9 @@ export function RunMonitorPage() {
   const projectQuery = useProjectDetailQuery(projectId)
   const versionQuery = useVersionDetailQuery(versionId)
   const latestRunId = versionQuery.data?.latest_run_id ?? null
+  const executiveSummaryHref = latestRunId
+    ? `/projects/${projectId}/versions/${versionId}/runs/${latestRunId}/executive-summary`
+    : null
 
   const {
     connectionState,
@@ -1090,6 +1093,12 @@ export function RunMonitorPage() {
           ) : (
             <Badge variant="outline">Loading run</Badge>
           )}
+
+          {executiveSummaryHref ? (
+            <Button asChild size="sm" variant="outline">
+              <Link to={executiveSummaryHref}>Executive Summary</Link>
+            </Button>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">

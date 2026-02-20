@@ -637,11 +637,13 @@ export async function cancelRun(runId: string): Promise<CancelRunResponse> {
   return parseCancelRunResponse(response)
 }
 
-export async function getExecutiveSummary(runId: string): Promise<ExecutiveSummaryResponse> {
+export async function getRunExecutiveSummary(runId: string): Promise<ExecutiveSummaryResponse> {
   return request<ExecutiveSummaryResponse>(`/runs/${encodeURIComponent(runId)}/executive-summary`, {
     method: 'GET',
   })
 }
+
+export const getExecutiveSummary = getRunExecutiveSummary
 
 function normalizeRetryRunPayload(
   payload: RetryRunRequestBody | undefined,

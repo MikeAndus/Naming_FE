@@ -1827,3 +1827,63 @@ execSummaryQueryKey(runId) => ['run', runId, 'exec-summary']
 ### Manual runtime notes
 - Browser-level drawer interaction checks (open/edit notes/close/reopen and refetch behavior) were not executable in this sandbox session.
 - Code-path verification confirms drawer-bound patch mutation updates cache directly (detail + list) with no mutation-triggered refetch invalidation.
+
+## 2026-02-20 18:06 GMT - Executive Summary page/tab via single runs executive-summary endpoint
+
+### Files changed
+- `frontend/src/routes/ExecutiveSummaryPage.tsx` (new)
+- `frontend/src/features/runs/queryKeys.ts` (new)
+- `frontend/src/app/router.tsx`
+- `frontend/src/features/runs/queries.ts`
+- `frontend/src/lib/api/runs.ts`
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `overdrive/phase_0_fe_log.md`
+
+### Final route path
+- `/projects/:projectId/versions/:versionId/runs/:runId/executive-summary`
+
+### Query key used
+- `runsKeys.executiveSummary(runId)` in `frontend/src/features/runs/queryKeys.ts`
+- Key shape: `['run', runId, 'exec-summary']`
+- Hook: `useRunExecutiveSummaryQuery(runId)` (alias of `useExecutiveSummaryQuery`)
+
+### Endpoint usage confirmation
+- Executive Summary page content uses only:
+  - `GET /api/v1/runs/{run_id}/executive-summary`
+- No additional content-fetch queries were added for territory cards, checkpoints, run status, or research snapshot stitching.
+
+### Placeholder behavior implemented
+- Loading phase: section skeletons rendered with `SkeletonSection` for all five sections.
+- Loaded-but-missing data: each section shows stage-aware placeholder copy (no JSON dumps/no crashes):
+  - Competitive Landscape + Whitespace: pending copy tied to Research Snapshot (Stage 0).
+  - Territory Cards: pending copy tied to Territory Review gate (after Stage 1).
+  - Brief Snapshot + Run Settings: fallback placeholder copy and `—` value fallbacks for partial fields.
+- Error state: uses `EmptyState` with retry (`refetch`).
+
+### UI/route wiring details
+- Added desktop-only, read-only stacked Executive Summary page with section order:
+  1) Brief Snapshot
+  2) Competitive Landscape
+  3) Whitespace Hypotheses
+  4) Territory Cards (approved only)
+  5) Run Settings
+- Added minimal navigation entry points to the new page from:
+  - Generation Review header (`Executive Summary` button)
+  - Run Monitor header (`Executive Summary` button)
+
+### Manual verification steps run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+- Static/code-path verification:
+  - Route registration and path wiring in router.
+  - Executive Summary query key shape and endpoint call path.
+  - Stage-aware missing-data placeholders per section.
+  - Territory cards rendered read-only and filtered to approved entries only.
+- Browser/network-panel runtime verification is pending local execution with backend:
+  1) Open `/projects/<projectId>/versions/<versionId>/runs/<runId>/executive-summary`.
+  2) Confirm page content request is only `/api/v1/runs/<runId>/executive-summary`.
+  3) Validate placeholder copy behavior for partial/missing section payloads.

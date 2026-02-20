@@ -32,6 +32,7 @@ export {
   cancelRun,
   createRunProgressEventSource,
   getExecutiveSummary,
+  getRunExecutiveSummary,
   getRunStatus,
   parseSseEventData,
   retryRun,

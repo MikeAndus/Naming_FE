@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { App } from '@/app/App'
+import { ExecutiveSummaryPage } from '@/routes/ExecutiveSummaryPage'
 import { GenerationReviewPage } from '@/routes/GenerationReviewPage'
 import { ProjectDetailPage } from '@/routes/ProjectDetailPage'
 import { ProjectsPage } from '@/routes/ProjectsPage'
@@ -47,6 +48,10 @@ export const router = createBrowserRouter([
           {
             path: ':projectId/versions/:versionId/results',
             element: <GenerationReviewPage />,
+          },
+          {
+            path: ':projectId/versions/:versionId/runs/:runId/executive-summary',
+            element: <ExecutiveSummaryPage />,
           },
         ],
       },
