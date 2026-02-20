@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { AlertTriangle, RefreshCcw, WifiOff } from 'lucide-react'
+import { AlertTriangle, RefreshCcw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -41,7 +41,6 @@ import {
 } from '@/features/names/queries'
 import { projectDetailQueryKey, useProjectDetailQuery } from '@/features/projects/queries'
 import { runStatusQueryKey, useRunStatusQuery } from '@/features/runs/queries'
-import { useRunProgress } from '@/features/runs/useRunProgress'
 import {
   projectVersionsQueryKey,
   useVersionDetailQuery,
@@ -49,6 +48,7 @@ import {
 } from '@/features/versions/queries'
 import { getErrorMessage, type NameCandidateResponse, type RunState } from '@/lib/api'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useVersionDetailOutletContext } from '@/routes/versionDetailContext'
 import { toast } from '@/hooks/use-toast'
 
 function subscribeDesktop(callback: () => void): () => void {
@@ -201,6 +201,7 @@ const EMPTY_NAMES: NameCandidateResponse[] = []
 
 export function GenerationReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
+  const versionDetailContext = useVersionDetailOutletContext()
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -211,22 +212,16 @@ export function GenerationReviewPage() {
   const resolvedVersionId = projectId && versionId && isDesktop ? versionId : undefined
   const projectQuery = useProjectDetailQuery(resolvedProjectId)
   const versionQuery = useVersionDetailQuery(resolvedVersionId)
-  const runId = versionQuery.data?.latest_run_id ?? undefined
+  const runId = versionDetailContext?.runId ?? versionQuery.data?.latest_run_id ?? undefined
   const runStatusQuery = useRunStatusQuery(isDesktop ? runId : undefined)
 
   const versionBuilderHref = projectId && versionId ? `/projects/${projectId}/versions/${versionId}` : '/projects'
-  const runMonitorHref = `${versionBuilderHref}/run`
+  const runMonitorHref = `${versionBuilderHref}/run-monitor`
   const territoryReviewHref = `${versionBuilderHref}/territory-review`
   const resultsHref = `${versionBuilderHref}/results`
-  const executiveSummaryHref = runId
-    ? `${versionBuilderHref}/runs/${runId}/executive-summary`
-    : null
-
-  const runProgress = useRunProgress({
-    runId: isDesktop && runId ? runId : null,
-    enabled: Boolean(isDesktop && runId),
-  })
-  const resolvedRunState = runProgress.status?.state ?? runStatusQuery.data?.state
+  const executiveSummaryHref = runId ? `${versionBuilderHref}/executive-summary` : null
+  const streamedRunStatus = versionDetailContext?.runStatus ?? null
+  const resolvedRunState = streamedRunStatus?.state ?? runStatusQuery.data?.state
 
   const unavailableCta = resolvedRunState
     ? getUnavailableCta(resolvedRunState, {
@@ -260,8 +255,6 @@ export function GenerationReviewPage() {
     isDesktop && runId && resolvedRunState && !unavailableCta && projectId && versionId,
   )
   const isPhase3Running = Boolean(resolvedRunState && PHASE_3_RUN_STATES.has(resolvedRunState))
-  const useNamesPollingFallback =
-    isPhase3Running && runProgress.connectionState !== 'live'
 
   const allNamesQuery = useRunNamesQuery(
     shouldLoadNames ? runId : undefined,
@@ -274,7 +267,6 @@ export function GenerationReviewPage() {
     },
     {
       enabled: shouldLoadNames,
-      refetchInterval: useNamesPollingFallback ? 5000 : false,
     },
   )
 
@@ -288,7 +280,6 @@ export function GenerationReviewPage() {
     },
     {
       enabled: shouldLoadNames,
-      refetchInterval: useNamesPollingFallback ? 5000 : false,
     },
   )
 
@@ -359,7 +350,7 @@ export function GenerationReviewPage() {
       })
     }
 
-    const runProgressData = runProgress.status?.progress
+    const runProgressData = streamedRunStatus?.progress
     let diversityShortfallMessage: string | null = null
     if (runProgressData && typeof runProgressData === 'object') {
       const diversityShortfall = runProgressData['diversity_shortfall']
@@ -375,7 +366,7 @@ export function GenerationReviewPage() {
       unknownCount,
       diversityShortfallMessage,
     }
-  }, [displayedNames, isPhase3Running, runProgress.status?.progress])
+  }, [displayedNames, isPhase3Running, streamedRunStatus?.progress])
 
   const handleToggleShortlisted = (candidate: NameCandidateResponse) => {
     if (!runId) {
@@ -717,14 +708,6 @@ export function GenerationReviewPage() {
           />
         ) : null}
 
-        {useNamesPollingFallback ? (
-          <InlineBanner
-            description="Realtime stream degraded. Polling every 5s until the SSE connection recovers."
-            icon={<WifiOff className="h-4 w-4" />}
-            title="Reconnecting"
-            variant="warning"
-          />
-        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-background">

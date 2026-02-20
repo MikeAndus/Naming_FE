@@ -7,6 +7,7 @@ import { ProjectDetailPage } from '@/routes/ProjectDetailPage'
 import { ProjectsPage } from '@/routes/ProjectsPage'
 import { RunMonitorPage } from '@/routes/RunMonitorPage'
 import { TerritoryReviewPage } from '@/routes/TerritoryReviewPage'
+import { VersionDetailPage } from '@/routes/VersionDetailPage'
 import { VersionBuilderPage } from '@/routes/VersionBuilderPage'
 
 export const router = createBrowserRouter([
@@ -31,27 +32,45 @@ export const router = createBrowserRouter([
           },
           {
             path: ':projectId/versions/:versionId',
-            element: <VersionBuilderPage />,
-          },
-          {
-            path: ':projectId/versions/:versionId/run',
-            element: <RunMonitorPage />,
-          },
-          {
-            path: ':projectId/versions/:versionId/territory-review',
-            element: <TerritoryReviewPage />,
-          },
-          {
-            path: ':projectId/versions/:versionId/generation-review',
-            element: <GenerationReviewPage />,
-          },
-          {
-            path: ':projectId/versions/:versionId/results',
-            element: <GenerationReviewPage />,
-          },
-          {
-            path: ':projectId/versions/:versionId/runs/:runId/executive-summary',
-            element: <ExecutiveSummaryPage />,
+            children: [
+              {
+                index: true,
+                element: <VersionBuilderPage />,
+              },
+              {
+                path: 'territory-review',
+                element: <TerritoryReviewPage />,
+              },
+              {
+                element: <VersionDetailPage />,
+                children: [
+                  {
+                    path: 'results',
+                    element: <GenerationReviewPage />,
+                  },
+                  {
+                    path: 'generation-review',
+                    element: <Navigate replace to="../results" />,
+                  },
+                  {
+                    path: 'executive-summary',
+                    element: <ExecutiveSummaryPage />,
+                  },
+                  {
+                    path: 'runs/:runId/executive-summary',
+                    element: <Navigate replace to="../../../executive-summary" />,
+                  },
+                  {
+                    path: 'run-monitor',
+                    element: <RunMonitorPage />,
+                  },
+                  {
+                    path: 'run',
+                    element: <Navigate replace to="../run-monitor" />,
+                  },
+                ],
+              },
+            ],
           },
         ],
       },

@@ -17,6 +17,7 @@ import { TerritoryCardStatusBadge } from '@/features/territoryReview/components/
 import { getTerritoryCardSourceLabel } from '@/features/territoryReview/cardLabels'
 import { useRunExecutiveSummaryQuery } from '@/features/runs/queries'
 import { formatDateTime } from '@/lib/date'
+import { useVersionDetailOutletContext } from '@/routes/versionDetailContext'
 import { getErrorMessage, type TerritoryCard } from '@/lib/api'
 
 function subscribeDesktop(callback: () => void): () => void {
@@ -302,16 +303,18 @@ function ReadOnlyTerritoryCards({ cards }: { cards: TerritoryCard[] }) {
 }
 
 export function ExecutiveSummaryPage() {
-  const { projectId, versionId, runId } = useParams<{
+  const { projectId, versionId, runId: legacyRunId } = useParams<{
     projectId: string
     versionId: string
-    runId: string
+    runId?: string
   }>()
+  const versionDetailContext = useVersionDetailOutletContext()
+  const runId = versionDetailContext?.runId ?? legacyRunId ?? undefined
   const isDesktop = useIsDesktop()
 
   const versionBuilderHref =
     projectId && versionId ? `/projects/${projectId}/versions/${versionId}` : '/projects'
-  const runMonitorHref = `${versionBuilderHref}/run`
+  const runMonitorHref = `${versionBuilderHref}/run-monitor`
   const resultsHref = `${versionBuilderHref}/results`
 
   const executiveSummaryQuery = useRunExecutiveSummaryQuery(isDesktop ? runId : undefined)

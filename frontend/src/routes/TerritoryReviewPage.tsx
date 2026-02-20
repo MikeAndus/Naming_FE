@@ -514,7 +514,7 @@ export function TerritoryReviewPage() {
           }),
         ])
 
-        navigate(`/projects/${projectId}/versions/${versionId}/run`)
+        navigate(`/projects/${projectId}/versions/${versionId}/run-monitor`)
       },
       onError: (error) => {
         const parsedError = parseTerritoryReviewError(error)

@@ -147,6 +147,92 @@ function patchRunNamesCaches(
   return { snapshots }
 }
 
+function areDeepClearanceEqual(
+  left: NameCandidateResponse['deep_clearance'],
+  right: NameCandidateResponse['deep_clearance'],
+): boolean {
+  if (left === right) {
+    return true
+  }
+
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+function isEquivalentAuthoritativeCandidate(
+  current: NameCandidateResponse,
+  incoming: NameCandidateResponse,
+): boolean {
+  return (
+    current.updated_at === incoming.updated_at &&
+    current.shortlisted === incoming.shortlisted &&
+    current.selected_for_clearance === incoming.selected_for_clearance &&
+    current.selected_for_final === incoming.selected_for_final &&
+    current.rank === incoming.rank &&
+    current.notes === incoming.notes &&
+    current.fast_clearance_status === incoming.fast_clearance_status &&
+    current.deep_trademark_status === incoming.deep_trademark_status &&
+    current.deep_domain_status === incoming.deep_domain_status &&
+    current.deep_social_status === incoming.deep_social_status &&
+    areDeepClearanceEqual(current.deep_clearance, incoming.deep_clearance)
+  )
+}
+
+function isSameQueryKey(left: QueryKey, right: QueryKey): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+export function reconcileRunNamesCachesFromAuthoritativeList(
+  queryClient: QueryClient,
+  params: {
+    runId: string
+    source: NameCandidateListResponse
+    skipQueryKey?: QueryKey
+  },
+): void {
+  const incomingById = new Map(params.source.items.map((candidate) => [candidate.id, candidate]))
+
+  queryClient
+    .getQueriesData<NameCandidateListResponse>({
+      predicate: getRunNamesQueryPredicate(params.runId),
+    })
+    .forEach(([queryKey, current]) => {
+      if (!current) {
+        return
+      }
+
+      if (params.skipQueryKey && isSameQueryKey(queryKey, params.skipQueryKey)) {
+        return
+      }
+
+      let changed = false
+      const nextItems = current.items.map((candidate) => {
+        const incoming = incomingById.get(candidate.id)
+        if (!incoming) {
+          return candidate
+        }
+
+        if (isEquivalentAuthoritativeCandidate(candidate, incoming)) {
+          return candidate
+        }
+
+        changed = true
+        return {
+          ...candidate,
+          ...incoming,
+        }
+      })
+
+      if (!changed) {
+        return
+      }
+
+      queryClient.setQueryData<NameCandidateListResponse>(queryKey, {
+        ...current,
+        items: nextItems,
+      })
+    })
+}
+
 export function updateNameCandidateDeepClearance(
   queryClient: QueryClient,
   params: {

@@ -1092,7 +1092,7 @@ export function VersionBuilderPage() {
         previousLatestRunId: latestRunId,
       })
 
-      navigate(`/projects/${projectId}/versions/${versionId}/run`)
+      navigate(`/projects/${projectId}/versions/${versionId}/run-monitor`)
     } catch (error) {
       if (isApiError(error) && error.status === 422) {
         const parsed = parse422ValidationErrors(error)
@@ -1355,7 +1355,7 @@ export function VersionBuilderPage() {
               </Button>
               {isRunActive ? (
                 <Button asChild type="button" variant="link">
-                  <Link to={`/projects/${projectId}/versions/${versionId}/run`}>View Run Monitor</Link>
+                  <Link to={`/projects/${projectId}/versions/${versionId}/run-monitor`}>View Run Monitor</Link>
                 </Button>
               ) : null}
             </div>

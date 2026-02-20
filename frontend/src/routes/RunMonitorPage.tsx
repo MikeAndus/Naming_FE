@@ -31,9 +31,9 @@ import {
   getStageLabel,
   type GateDefinition,
 } from '@/features/runs/stageMetadata'
-import { useRunProgress } from '@/features/runs/useRunProgress'
 import { useVersionDetailQuery } from '@/features/versions/queries'
 import { getErrorMessage, type RunState, type StageCheckpointResponse } from '@/lib/api'
+import { useVersionDetailOutletContext } from '@/routes/versionDetailContext'
 import { toast } from '@/hooks/use-toast'
 
 const ACTIVE_RUN_STATES: RunState[] = [
@@ -730,6 +730,7 @@ function RunTimelineSkeleton() {
 
 export function RunMonitorPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
+  const versionDetailContext = useVersionDetailOutletContext()
   const navigate = useNavigate()
   const isDesktop = useIsDesktop()
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -738,20 +739,15 @@ export function RunMonitorPage() {
 
   const projectQuery = useProjectDetailQuery(projectId)
   const versionQuery = useVersionDetailQuery(versionId)
-  const latestRunId = versionQuery.data?.latest_run_id ?? null
+  const latestRunId = versionDetailContext?.runId ?? versionQuery.data?.latest_run_id ?? null
   const executiveSummaryHref = latestRunId
-    ? `/projects/${projectId}/versions/${versionId}/runs/${latestRunId}/executive-summary`
+    ? `/projects/${projectId}/versions/${versionId}/executive-summary`
     : null
 
-  const {
-    connectionState,
-    error: runProgressError,
-    start: startRunProgress,
-    status: runStatus,
-  } = useRunProgress({
-    runId: latestRunId,
-    enabled: isDesktop && Boolean(latestRunId),
-  })
+  const connectionState = versionDetailContext?.connectionState ?? 'idle'
+  const runProgressError = versionDetailContext?.runProgressError ?? null
+  const startRunProgress = versionDetailContext?.restartRunProgress ?? (() => undefined)
+  const runStatus = versionDetailContext?.runStatus ?? null
 
   const cancelMutation = useCancelRunMutation()
   const retryMutation = useRetryRunMutation()

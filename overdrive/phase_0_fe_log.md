@@ -462,6 +462,72 @@
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
 
+## 2026-02-20 21:06 GMT - Version Detail tabs container + persistent SSE across tabs with names polling self-heal
+
+### Version Detail container + routing changes
+- Added `frontend/src/routes/VersionDetailPage.tsx` as the mounted parent container for tab content routes.
+- Updated router nesting in `frontend/src/app/router.tsx` under `:projectId/versions/:versionId`:
+  - `results` -> `GenerationReviewPage`
+  - `executive-summary` -> `ExecutiveSummaryPage`
+  - `run-monitor` -> `RunMonitorPage`
+- Kept legacy compatibility redirects:
+  - `generation-review` -> `results`
+  - `run` -> `run-monitor`
+  - `runs/:runId/executive-summary` -> `executive-summary`
+- `VersionBuilderPage` remains the index route at `:projectId/versions/:versionId`.
+
+### Tab gating logic
+- Implemented state ordering helper in `frontend/src/features/versions/stateOrder.ts`.
+- Results visibility rule:
+  - visible for `generation_review`, `phase_3_running`, `stage_9`, `stage_10`, `stage_11`, `complete`.
+- Executive Summary visibility rule:
+  - visible for `territory_review+` via ordinal comparison (`isStateAtLeast` semantics from ordered states).
+- Run Monitor tab remains visible.
+- Hidden-tab direct navigation now auto-redirects to the first visible tab from the container (`Navigate replace`), with visibility computed from current version/run state.
+
+### SSE lifecycle ownership move
+- Stream ownership is now at Version Detail parent level only:
+  - `frontend/src/routes/VersionDetailPage.tsx` mounts `useRunProgress({ runId })`.
+- Removed duplicate stream ownership from tab pages:
+  - `frontend/src/routes/GenerationReviewPage.tsx` no longer mounts `useRunProgress`.
+  - `frontend/src/routes/RunMonitorPage.tsx` now consumes shared stream status from outlet context (`frontend/src/routes/versionDetailContext.ts`).
+- This preserves one EventSource lifecycle while switching between Results, Executive Summary, and Run Monitor tabs.
+
+### Names cache patch strategy (SSE + polling reconcile)
+- SSE event handling remains in `useRunProgress`, but now executes once from Version Detail parent.
+- Added `reconcileRunNamesCachesFromAuthoritativeList(...)` in `frontend/src/features/names/optimistic.ts`:
+  - uses run-scoped predicate over names query keys (`['run', runId, 'names', ...]`)
+  - patches matching cached candidates by `id` across all cached variants for the run via `setQueryData`
+  - supports skipping the active polling query key to avoid redundant self-writes.
+- This keeps filtered/sorted cache variants synchronized so returning to Results shows latest streamed updates without forcing a refetch.
+
+### Polling fallback behavior
+- Added Version Detail-level fallback names polling using `useRunNamesQuery` (`GET /api/v1/runs/{id}/names`):
+  - interval: `5000ms`
+  - enabled only when:
+    - stream state is degraded (`reconnecting` or `polling`)
+    - and run/version is in phase 3 (`phase_3_running` or stage 9-11)
+- Added container-level reconnect banner:
+  - `Reconnecting...` appears during degraded stream states.
+- On stream recovery (`connectionState === 'live'`), fallback polling disables automatically.
+
+### Related page adjustments
+- Updated run monitor links to canonical nested tab path:
+  - `/projects/:projectId/versions/:versionId/run-monitor`
+- Updated executive summary links to canonical nested tab path:
+  - `/projects/:projectId/versions/:versionId/executive-summary`
+
+### Manual verification performed
+- Executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- Static route/path verification completed for:
+  - nested tab route mounting under Version Detail
+  - legacy path redirects (`/run`, `/generation-review`, `/runs/:runId/executive-summary`)
+  - hidden-tab redirect behavior in parent.
+- Browser network-panel checks (single EventSource across tab switches, drop/reconnect simulation, polling start/stop transitions) are pending local runtime verification with live backend/browser.
+
 ### Commit/push
 - Commit created on `main` and pushed to `origin/main`:
   - `feat(frontend): add typed run api + sse hook with polling fallback`
