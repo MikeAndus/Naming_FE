@@ -1491,3 +1491,42 @@
 
 ### Follow-up
 - Next node should wire `NameClearanceUpdateEvent` handling into the SSE consumer to call `updateNameCandidateDeepClearance(...)` when `name_clearance_update` events are received.
+
+## 2026-02-20 08:34 GMT - Parse `name_clearance_update` SSE + patch names cache in-place
+
+### Files changed
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/lib/api/runs.ts`
+- `frontend/src/features/runs/useRunProgress.ts`
+- `frontend/src/features/names/optimistic.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### Summary
+- Extended run SSE event typing to include `name_clearance_update` in `RUN_SSE_EVENT_TYPES` and `SSEEvent` union.
+- Added strict parsing for `name_clearance_update` payload in `parseSseEventData(...)` (including `clearance_type` and typed `deep_clearance` sub-objects).
+- Kept existing `stage_progress`/run-stage SSE handling unchanged.
+- Wired `useRunProgress` SSE listener to handle `name_clearance_update` events by patching TanStack Query cache via `updateNameCandidateDeepClearance(...)`.
+- Added per-subtype deep-clearance merge logic with out-of-order guards:
+  - `trademark` and `domain`: apply only when incoming `checked_at` is not older than cached value (best effort).
+  - `social`: per-platform merge with per-platform `checked_at` guard.
+
+### Cache update behavior
+- Query cache patch is scoped to existing run names key prefix (`runNamesRunQueryKeyPrefix(runId)`).
+- Matching candidate is updated by `name_id` in-place via `queryClient.setQueriesData(...)` (no refetch required).
+- Candidate-not-found and malformed-event cases are safely ignored.
+
+### Validation
+- Executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- Manual runtime path to verify locally with backend SSE:
+  1) Open Generation Review for a run in deep-clearance flow.
+  2) Trigger deep clearance.
+  3) Observe row-level deep-clearance badge area update without refetch.
+  4) Open Name Detail Drawer for the same candidate and confirm Deep Clearance section updates immediately as SSE events arrive.
+
+### Edge cases handled
+- Out-of-order events: guarded by `checked_at` comparisons (best effort) per sub-key/per social platform.
+- Dropped/malformed `name_clearance_update` events: ignored without crashing run monitor state handling.
+- Unknown `name_id` in cache: ignored safely.

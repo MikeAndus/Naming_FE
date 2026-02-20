@@ -2,6 +2,7 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query'
 
 import type {
   DeepClearance,
+  NameClearanceType,
   NameCandidateListResponse,
   NameCandidateResponse,
 } from '@/lib/api'
@@ -35,8 +36,11 @@ function updateCandidateInCachedList(
       return candidate
     }
 
-    changed = true
-    return update(candidate)
+    const nextCandidate = update(candidate)
+    if (nextCandidate !== candidate) {
+      changed = true
+    }
+    return nextCandidate
   })
 
   if (!changed) {
@@ -49,13 +53,104 @@ function updateCandidateInCachedList(
   }
 }
 
-function mergeDeepClearance(
+function parseCheckedAt(value: string | undefined): number | null {
+  if (!value) {
+    return null
+  }
+
+  const timestamp = new Date(value).getTime()
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
+function shouldApplyIncomingByCheckedAt(
+  currentCheckedAt: string | undefined,
+  incomingCheckedAt: string | undefined,
+): boolean {
+  const current = parseCheckedAt(currentCheckedAt)
+  const incoming = parseCheckedAt(incomingCheckedAt)
+
+  if (current === null || incoming === null) {
+    return true
+  }
+
+  return incoming >= current
+}
+
+function mergeSocialsWithCheckedAtGuard(
+  current: DeepClearance['socials'],
+  incoming: DeepClearance['socials'],
+): DeepClearance['socials'] {
+  if (!incoming) {
+    return current
+  }
+
+  const currentSocials = current ?? {}
+  const nextSocials = { ...currentSocials }
+  let changed = false
+
+  Object.entries(incoming).forEach(([platform, incomingResult]) => {
+    const currentResult = currentSocials[platform]
+    if (
+      !currentResult ||
+      shouldApplyIncomingByCheckedAt(currentResult.checked_at, incomingResult.checked_at)
+    ) {
+      nextSocials[platform] = incomingResult
+      changed = true
+    }
+  })
+
+  return changed ? nextSocials : current
+}
+
+function mergeDeepClearanceByType(
   current: DeepClearance | null,
   incoming: DeepClearance,
-): DeepClearance {
+  clearanceType: NameClearanceType,
+): DeepClearance | null {
+  if (clearanceType === 'trademark') {
+    if (!incoming.trademark) {
+      return current
+    }
+
+    if (
+      current?.trademark &&
+      !shouldApplyIncomingByCheckedAt(current.trademark.checked_at, incoming.trademark.checked_at)
+    ) {
+      return current
+    }
+
+    return {
+      ...(current ?? {}),
+      trademark: incoming.trademark,
+    }
+  }
+
+  if (clearanceType === 'domain') {
+    if (!incoming.domain) {
+      return current
+    }
+
+    if (
+      current?.domain &&
+      !shouldApplyIncomingByCheckedAt(current.domain.checked_at, incoming.domain.checked_at)
+    ) {
+      return current
+    }
+
+    return {
+      ...(current ?? {}),
+      domain: incoming.domain,
+    }
+  }
+
+  const nextSocials = mergeSocialsWithCheckedAtGuard(current?.socials, incoming.socials)
+  if (nextSocials === current?.socials) {
+    return current
+  }
+
   return {
     ...(current ?? {}),
-    ...incoming,
+    socials: nextSocials,
   }
 }
 
@@ -64,10 +159,11 @@ export function updateNameCandidateDeepClearance(
   params: {
     runId: string
     nameId: string
+    clearanceType: NameClearanceType
     deepClearance: DeepClearance
   },
 ): void {
-  const { runId, nameId, deepClearance } = params
+  const { runId, nameId, clearanceType, deepClearance } = params
   const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
 
   queryClient.setQueriesData<unknown>(
@@ -91,18 +187,38 @@ export function updateNameCandidateDeepClearance(
         return updateCandidateInCachedList(
           current as NameCandidateListResponse,
           nameId,
-          (candidate) => ({
-            ...candidate,
-            deep_clearance: mergeDeepClearance(candidate.deep_clearance, deepClearance),
-          }),
+          (candidate) => {
+            const nextDeepClearance = mergeDeepClearanceByType(
+              candidate.deep_clearance,
+              deepClearance,
+              clearanceType,
+            )
+            if (nextDeepClearance === candidate.deep_clearance) {
+              return candidate
+            }
+
+            return {
+              ...candidate,
+              deep_clearance: nextDeepClearance,
+            }
+          },
         )
       }
 
       if ('id' in current && current.id === nameId) {
         const candidate = current as NameCandidateResponse
+        const nextDeepClearance = mergeDeepClearanceByType(
+          candidate.deep_clearance,
+          deepClearance,
+          clearanceType,
+        )
+        if (nextDeepClearance === candidate.deep_clearance) {
+          return current
+        }
+
         return {
           ...candidate,
-          deep_clearance: mergeDeepClearance(candidate.deep_clearance, deepClearance),
+          deep_clearance: nextDeepClearance,
         } satisfies NameCandidateResponse
       }
 

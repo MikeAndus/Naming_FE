@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
+import { updateNameCandidateDeepClearance } from '@/features/names/optimistic'
 import { getErrorMessage } from '@/lib/api/errors'
 import { createRunProgressEventSource, getRunStatus, parseSseEventData } from '@/lib/api/runs'
 import type { RunSSEEventType, RunState, RunStatusResponse, SSEEvent } from '@/lib/api/runs.types'
@@ -35,6 +37,7 @@ const EVENT_TYPES: RunSSEEventType[] = [
   'gate_reached',
   'run_completed',
   'run_failed',
+  'name_clearance_update',
 ]
 
 function isTerminalRunState(state: RunState): boolean {
@@ -238,6 +241,10 @@ function applySseEvent(current: RunStatusResponse | null, event: SSEEvent): RunS
     }
   }
 
+  if (event.event_type === 'name_clearance_update') {
+    return current
+  }
+
   return {
     ...current,
     state: 'failed',
@@ -258,6 +265,7 @@ export function useRunProgress({
   runId,
   enabled = true,
 }: UseRunProgressInput): UseRunProgressResult {
+  const queryClient = useQueryClient()
   const [status, setStatus] = useState<RunStatusResponse | null>(null)
   const [connectionState, setConnectionState] = useState<RunProgressConnectionState>('idle')
   const [error, setError] = useState<Error | null>(null)
@@ -388,6 +396,21 @@ export function useRunProgress({
 
         try {
           const parsedEvent = parseSseEventData(eventType, messageEvent.data)
+
+          if (parsedEvent.event_type === 'name_clearance_update') {
+            if (parsedEvent.data.run_id !== runId) {
+              return
+            }
+
+            updateNameCandidateDeepClearance(queryClient, {
+              runId: parsedEvent.data.run_id,
+              nameId: parsedEvent.data.name_id,
+              clearanceType: parsedEvent.data.clearance_type,
+              deepClearance: parsedEvent.data.deep_clearance,
+            })
+            return
+          }
+
           const nextStatus = applySseEvent(statusRef.current, parsedEvent)
 
           if (!nextStatus) {
@@ -400,6 +423,10 @@ export function useRunProgress({
             void refreshStatus()
           }
         } catch (parseError) {
+          if (eventType === 'name_clearance_update') {
+            return
+          }
+
           setError(toError(parseError))
           void refreshStatus()
         }
@@ -492,7 +519,7 @@ export function useRunProgress({
       disposed = true
       stopNetwork()
     }
-  }, [runId, shouldRun, restartTick])
+  }, [queryClient, runId, shouldRun, restartTick])
 
   const start = useCallback(() => {
     setStoppedRunId(null)

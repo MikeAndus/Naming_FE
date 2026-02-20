@@ -9,6 +9,7 @@ export const RUN_SSE_EVENT_TYPES = [
   'gate_reached',
   'run_completed',
   'run_failed',
+  'name_clearance_update',
 ] as const
 
 export type RunSSEEventType = (typeof RUN_SSE_EVENT_TYPES)[number]
@@ -143,6 +144,11 @@ export type RunFailedSSEEvent = BaseSSEEvent<
   }
 >
 
+export type NameClearanceUpdateSSEEvent = BaseSSEEvent<
+  'name_clearance_update',
+  NameClearanceUpdateEvent
+>
+
 export type SSEEvent =
   | SnapshotSSEEvent
   | StageStartedSSEEvent
@@ -152,6 +158,7 @@ export type SSEEvent =
   | GateReachedSSEEvent
   | RunCompletedSSEEvent
   | RunFailedSSEEvent
+  | NameClearanceUpdateSSEEvent
 
 export interface StartRunRequestBody {
   fail_at_stage?: number | null

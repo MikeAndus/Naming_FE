@@ -1,7 +1,16 @@
 import { getApiV1BaseUrl, request } from '@/lib/api/client'
 import type {
+  DeepClearance,
+  DomainClearance,
+  SocialClearance,
+  SocialClearanceMap,
+  TrademarkClearance,
+  TrademarkSimilarMark,
+} from '@/lib/api/names.types'
+import type {
   CancelRunResponse,
   DeepClearanceTriggerResponse,
+  NameClearanceType,
   RunSSEEventType,
   RunState,
   RunStatusResponse,
@@ -211,6 +220,210 @@ function assertBoolean(value: unknown, fieldName: string, eventType: RunSSEEvent
   return value
 }
 
+function assertRecord(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${eventType} payload: expected object at ${fieldName}`)
+  }
+
+  return value
+}
+
+function assertNameClearanceType(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): NameClearanceType {
+  if (value === 'trademark' || value === 'domain' || value === 'social') {
+    return value
+  }
+
+  throw new Error(
+    `Invalid ${eventType} payload: expected 'trademark'|'domain'|'social' at ${fieldName}`,
+  )
+}
+
+function assertTrademarkStatus(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): TrademarkClearance['status'] {
+  if (value === 'green' || value === 'amber' || value === 'red' || value === 'unknown') {
+    return value
+  }
+
+  throw new Error(
+    `Invalid ${eventType} payload: expected trademark status at ${fieldName}`,
+  )
+}
+
+function assertDomainStatus(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): DomainClearance['status'] {
+  if (value === 'available' || value === 'taken' || value === 'unknown') {
+    return value
+  }
+
+  throw new Error(`Invalid ${eventType} payload: expected domain status at ${fieldName}`)
+}
+
+function assertSocialStatus(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): SocialClearance['status'] {
+  if (value === 'clear' || value === 'busy' || value === 'mixed' || value === 'unknown') {
+    return value
+  }
+
+  throw new Error(`Invalid ${eventType} payload: expected social status at ${fieldName}`)
+}
+
+function parseTrademarkSimilarMark(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): TrademarkSimilarMark {
+  const parsed = assertRecord(value, fieldName, eventType)
+  const mark_name = assertString(parsed.mark_name, `${fieldName}.mark_name`, eventType)
+
+  let class_codes: Array<string | number> | undefined
+  if ('class_codes' in parsed) {
+    const rawClassCodes = parsed.class_codes
+    if (!Array.isArray(rawClassCodes)) {
+      throw new Error(`Invalid ${eventType} payload: expected array at ${fieldName}.class_codes`)
+    }
+
+    class_codes = rawClassCodes.map((item, index) => {
+      if (typeof item === 'string' || typeof item === 'number') {
+        return item
+      }
+
+      throw new Error(
+        `Invalid ${eventType} payload: expected string|number at ${fieldName}.class_codes.${index}`,
+      )
+    })
+  }
+
+  return {
+    mark_name,
+    ...(typeof parsed.serial_number === 'string' ? { serial_number: parsed.serial_number } : {}),
+    ...(typeof parsed.registration_number === 'string'
+      ? { registration_number: parsed.registration_number }
+      : {}),
+    ...(typeof parsed.status === 'string' ? { status: parsed.status } : {}),
+    ...(class_codes ? { class_codes } : {}),
+    ...(typeof parsed.description === 'string' ? { description: parsed.description } : {}),
+  }
+}
+
+function parseTrademarkClearance(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): TrademarkClearance {
+  const parsed = assertRecord(value, fieldName, eventType)
+  const status = assertTrademarkStatus(parsed.status, `${fieldName}.status`, eventType)
+  const checked_at = assertString(parsed.checked_at, `${fieldName}.checked_at`, eventType)
+
+  const similar_marks = Array.isArray(parsed.similar_marks)
+    ? parsed.similar_marks.map((mark, index) =>
+        parseTrademarkSimilarMark(mark, `${fieldName}.similar_marks.${index}`, eventType),
+      )
+    : []
+
+  return {
+    status,
+    checked_at,
+    similar_marks,
+    ...(typeof parsed.reason === 'string' ? { reason: parsed.reason } : {}),
+    ...('raw_response' in parsed ? { raw_response: parsed.raw_response } : {}),
+  }
+}
+
+function parseDomainClearance(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): DomainClearance {
+  const parsed = assertRecord(value, fieldName, eventType)
+
+  return {
+    status: assertDomainStatus(parsed.status, `${fieldName}.status`, eventType),
+    domain_name: assertString(parsed.domain_name, `${fieldName}.domain_name`, eventType),
+    checked_at: assertString(parsed.checked_at, `${fieldName}.checked_at`, eventType),
+    ...(typeof parsed.reason === 'string' ? { reason: parsed.reason } : {}),
+  }
+}
+
+function parseSocialClearance(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): SocialClearance {
+  const parsed = assertRecord(value, fieldName, eventType)
+
+  return {
+    status: assertSocialStatus(parsed.status, `${fieldName}.status`, eventType),
+    handle: assertString(parsed.handle, `${fieldName}.handle`, eventType),
+    checked_at: assertString(parsed.checked_at, `${fieldName}.checked_at`, eventType),
+    ...(typeof parsed.reason === 'string' ? { reason: parsed.reason } : {}),
+  }
+}
+
+function parseSocialClearanceMap(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): SocialClearanceMap {
+  const parsed = assertRecord(value, fieldName, eventType)
+
+  return Object.entries(parsed).reduce<SocialClearanceMap>((result, [platform, platformResult]) => {
+    result[platform] = parseSocialClearance(
+      platformResult,
+      `${fieldName}.${platform}`,
+      eventType,
+    )
+    return result
+  }, {})
+}
+
+function parseDeepClearance(
+  value: unknown,
+  fieldName: string,
+  eventType: RunSSEEventType,
+): DeepClearance {
+  const parsed = assertRecord(value, fieldName, eventType)
+  const deepClearance: DeepClearance = {}
+
+  if ('trademark' in parsed && parsed.trademark !== null && typeof parsed.trademark !== 'undefined') {
+    deepClearance.trademark = parseTrademarkClearance(
+      parsed.trademark,
+      `${fieldName}.trademark`,
+      eventType,
+    )
+  }
+
+  if ('domain' in parsed && parsed.domain !== null && typeof parsed.domain !== 'undefined') {
+    deepClearance.domain = parseDomainClearance(parsed.domain, `${fieldName}.domain`, eventType)
+  }
+
+  if ('socials' in parsed && parsed.socials !== null && typeof parsed.socials !== 'undefined') {
+    deepClearance.socials = parseSocialClearanceMap(
+      parsed.socials,
+      `${fieldName}.socials`,
+      eventType,
+    )
+  }
+
+  return deepClearance
+}
+
 function parseSsePayload(rawData: string, eventType: RunSSEEventType): unknown {
   try {
     return JSON.parse(rawData) as unknown
@@ -346,6 +559,24 @@ export function parseSseEventData(eventType: RunSSEEventType, rawData: string): 
         run_id,
         stage_id: toStageId(data.stage_id, 'stage_id'),
         run_state: data.run_state,
+      },
+    }
+  }
+
+  if (eventType === 'name_clearance_update') {
+    return {
+      event_type: 'name_clearance_update',
+      timestamp,
+      data: {
+        event_type: 'name_clearance_update',
+        run_id,
+        name_id: assertString(data.name_id, 'name_id', eventType),
+        clearance_type: assertNameClearanceType(
+          data.clearance_type,
+          'clearance_type',
+          eventType,
+        ),
+        deep_clearance: parseDeepClearance(data.deep_clearance, 'deep_clearance', eventType),
       },
     }
   }
