@@ -8,48 +8,37 @@ import {
 import {
   DEFAULT_RUN_NAMES_LIST_LIMIT,
   DEFAULT_RUN_NAMES_LIST_OFFSET,
-  listRunNames,
+  getNameCandidate,
+  getRunNames,
+  normalizeNameCandidateListQueryParams,
   patchNameCandidate,
   triggerRunDeepClearance,
   type DeepClearanceTriggerResponse,
+  type NameCandidateDetailResponse,
   type NameCandidateListQueryParams,
   type NameCandidateListResponse,
   type NameCandidatePatchRequest,
   type NameCandidatePatchResponse,
+  type NormalizedNameCandidateListQueryParams,
 } from '@/lib/api'
+import { isRunNamesQueryKey, namesKeys } from '@/features/names/queryKeys'
 import {
   mergePatchedCandidateAcrossRunCaches,
+  mergePatchedCandidateIntoNameDetailCache,
+  optimisticallyPatchNameDetailCache,
   optimisticallySetNotesAcrossRunCaches,
   optimisticallySetSelectedForClearanceAcrossRunCaches,
   optimisticallySetShortlistedAcrossRunCaches,
   rollbackRunNamesOptimisticUpdate,
-  runNamesQueryKeyPrefix,
-  runNamesRunQueryKeyPrefix,
   type RunNamesOptimisticRollbackContext,
 } from '@/features/names/optimistic'
 
-export type NormalizedRunNamesQueryParams = Omit<
-  NameCandidateListQueryParams,
-  'limit' | 'offset'
-> & {
-  limit: number
-  offset: number
-}
+export type { NormalizedNameCandidateListQueryParams }
 
-export function normalizeRunNamesQueryParams(
-  params: NameCandidateListQueryParams = {},
-): NormalizedRunNamesQueryParams {
-  return {
-    ...params,
-    limit: params.limit ?? DEFAULT_RUN_NAMES_LIST_LIMIT,
-    offset: params.offset ?? DEFAULT_RUN_NAMES_LIST_OFFSET,
-  }
-}
+export { namesKeys }
 
-export const runNamesQueryKey = (
-  runId: string,
-  params: NameCandidateListQueryParams = {},
-) => ['names', 'run', runId, normalizeRunNamesQueryParams(params)] as const
+export const runNamesQueryKey = namesKeys.runNames
+export const nameCandidateQueryKey = namesKeys.detail
 
 export type UseRunNamesQueryOptions = Omit<
   UseQueryOptions<NameCandidateListResponse>,
@@ -61,14 +50,14 @@ export function useRunNamesQuery(
   params: NameCandidateListQueryParams = {},
   options?: UseRunNamesQueryOptions,
 ) {
-  const normalizedParams = normalizeRunNamesQueryParams(params)
+  const normalizedParams = normalizeNameCandidateListQueryParams(params)
 
   return useQuery({
     ...(options ?? {}),
     queryKey: runId
-      ? runNamesQueryKey(runId, normalizedParams)
-      : [...runNamesQueryKeyPrefix, 'missing-run-id', normalizedParams],
-    queryFn: () => listRunNames(runId as string, normalizedParams),
+      ? namesKeys.runNames(runId, normalizedParams)
+      : (['run', 'missing-run-id', 'names', normalizedParams] as const),
+    queryFn: () => getRunNames(runId as string, normalizedParams),
     enabled: Boolean(runId) && (options?.enabled ?? true),
     meta: {
       suppressGlobalErrorToast: true,
@@ -97,6 +86,31 @@ export function useRunNamesAllQuery(
   )
 }
 
+export type UseNameCandidateQueryOptions = Omit<
+  UseQueryOptions<NameCandidateDetailResponse>,
+  'queryKey' | 'queryFn'
+>
+
+export function useNameCandidateQuery(
+  nameId: string | undefined,
+  options?: UseNameCandidateQueryOptions,
+) {
+  return useQuery({
+    ...(options ?? {}),
+    queryKey: nameId ? namesKeys.detail(nameId) : (['name', 'missing-id'] as const),
+    queryFn: () => getNameCandidate(nameId as string),
+    enabled: Boolean(nameId) && (options?.enabled ?? true),
+    // Prevent open/close remount churn from forcing a stale refetch.
+    refetchOnMount: options?.refetchOnMount ?? false,
+    meta: {
+      suppressGlobalErrorToast: true,
+      ...(options?.meta && typeof options.meta === 'object'
+        ? (options.meta as Record<string, unknown>)
+        : {}),
+    },
+  })
+}
+
 export interface PatchNameCandidateVariables {
   nameId: string
   patch: NameCandidatePatchRequest
@@ -122,15 +136,29 @@ export function usePatchNameCandidateMutation() {
     },
     onMutate: async (variables) => {
       const runId = variables.runId
-      if (!runId) {
-        return { rollbacks: [] }
-      }
 
       await queryClient.cancelQueries({
-        queryKey: runNamesRunQueryKeyPrefix(runId),
+        queryKey: namesKeys.detail(variables.nameId),
+        exact: true,
       })
+      if (runId) {
+        await queryClient.cancelQueries({
+          queryKey: namesKeys.runNamesPrefix(runId),
+        })
+      } else {
+        await queryClient.cancelQueries({
+          predicate: (query) => isRunNamesQueryKey(query.queryKey),
+        })
+      }
 
       const rollbacks: RunNamesOptimisticRollbackContext[] = []
+      rollbacks.push(
+        optimisticallyPatchNameDetailCache(queryClient, {
+          nameId: variables.nameId,
+          patch: variables.patch,
+        }),
+      )
+
       if (variables.patch.shortlisted !== undefined) {
         rollbacks.push(
           optimisticallySetShortlistedAcrossRunCaches(queryClient, {
@@ -174,15 +202,9 @@ export function usePatchNameCandidateMutation() {
         runId,
         candidate: response,
       })
-    },
-    onSettled: (response, _error, variables) => {
-      const runId = response?.run_id ?? variables.runId
-      if (!runId) {
-        return
-      }
-
-      void queryClient.invalidateQueries({
-        queryKey: runNamesRunQueryKeyPrefix(runId),
+      mergePatchedCandidateIntoNameDetailCache(queryClient, {
+        nameId: variables.nameId,
+        candidate: response,
       })
     },
   })
@@ -202,7 +224,7 @@ export function useRunDeepClearanceMutation() {
     },
     onSuccess: (_response, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: runNamesRunQueryKeyPrefix(variables.runId),
+        queryKey: namesKeys.runNamesPrefix(variables.runId),
       })
     },
   })

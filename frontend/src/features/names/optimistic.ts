@@ -1,27 +1,31 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 
+import { isRunNamesQueryKey, namesKeys } from '@/features/names/queryKeys'
 import type {
   DeepClearance,
+  NameCandidateDetailResponse,
   NameCandidateListResponse,
+  NameCandidatePatchRequest,
   NameCandidateResponse,
 } from '@/lib/api'
 
-export const runNamesQueryKeyPrefix = ['names', 'run'] as const
-
-export const runNamesRunQueryKeyPrefix = (runId: string) =>
-  [...runNamesQueryKeyPrefix, runId] as const
-
-function queryKeyHasPrefix(queryKey: QueryKey, prefix: readonly unknown[]): boolean {
-  return prefix.every((segment, index) => queryKey[index] === segment)
-}
-
 interface RunNamesQuerySnapshot {
   queryKey: QueryKey
-  previousData: NameCandidateListResponse
+  previousData: unknown
 }
 
 export interface RunNamesOptimisticRollbackContext {
   snapshots: RunNamesQuerySnapshot[]
+}
+
+interface NameCandidatePatchShape {
+  shortlisted?: NameCandidatePatchRequest['shortlisted']
+  notes?: NameCandidatePatchRequest['notes']
+  selected_for_clearance?: NameCandidatePatchRequest['selected_for_clearance']
+}
+
+function getRunNamesQueryPredicate(runId?: string): (query: { queryKey: QueryKey }) => boolean {
+  return (query) => isRunNamesQueryKey(query.queryKey, runId)
 }
 
 function updateCandidateInCachedList(
@@ -52,6 +56,97 @@ function updateCandidateInCachedList(
   }
 }
 
+function patchCandidateInList(
+  candidate: NameCandidateResponse,
+  patch: NameCandidatePatchShape,
+  nowIso: string,
+): NameCandidateResponse {
+  const nextShortlisted = patch.shortlisted ?? candidate.shortlisted
+  const nextSelectedForClearance =
+    patch.selected_for_clearance ?? candidate.selected_for_clearance
+  const nextNotes = patch.notes !== undefined ? patch.notes : candidate.notes
+
+  if (
+    nextShortlisted === candidate.shortlisted &&
+    nextSelectedForClearance === candidate.selected_for_clearance &&
+    nextNotes === candidate.notes
+  ) {
+    return candidate
+  }
+
+  return {
+    ...candidate,
+    shortlisted: nextShortlisted,
+    selected_for_clearance: nextSelectedForClearance,
+    notes: nextNotes,
+    updated_at: nowIso,
+  }
+}
+
+function patchNameDetailCandidate(
+  candidate: NameCandidateDetailResponse,
+  patch: NameCandidatePatchShape,
+): NameCandidateDetailResponse {
+  const nextShortlisted = patch.shortlisted ?? candidate.shortlisted
+  const nextSelectedForClearance =
+    patch.selected_for_clearance ?? candidate.selected_for_clearance
+  const nextNotes = patch.notes !== undefined ? patch.notes : candidate.notes
+
+  if (
+    nextShortlisted === candidate.shortlisted &&
+    nextSelectedForClearance === candidate.selected_for_clearance &&
+    nextNotes === candidate.notes
+  ) {
+    return candidate
+  }
+
+  return {
+    ...candidate,
+    shortlisted: nextShortlisted,
+    selected_for_clearance: nextSelectedForClearance,
+    notes: nextNotes,
+  }
+}
+
+function patchRunNamesCaches(
+  queryClient: QueryClient,
+  params: {
+    runId?: string
+    nameId: string
+    patch: NameCandidatePatchShape
+  },
+): RunNamesOptimisticRollbackContext {
+  const { runId, nameId, patch } = params
+  const snapshots: RunNamesQuerySnapshot[] = []
+  const nowIso = new Date().toISOString()
+
+  queryClient
+    .getQueriesData<NameCandidateListResponse>({
+      predicate: getRunNamesQueryPredicate(runId),
+    })
+    .forEach(([queryKey, current]) => {
+      if (!current) {
+        return
+      }
+
+      const next = updateCandidateInCachedList(current, nameId, (candidate) =>
+        patchCandidateInList(candidate, patch, nowIso),
+      )
+
+      if (next === current) {
+        return
+      }
+
+      snapshots.push({
+        queryKey,
+        previousData: current,
+      })
+      queryClient.setQueryData<NameCandidateListResponse>(queryKey, next)
+    })
+
+  return { snapshots }
+}
+
 export function updateNameCandidateDeepClearance(
   queryClient: QueryClient,
   params: {
@@ -61,22 +156,13 @@ export function updateNameCandidateDeepClearance(
   },
 ): void {
   const { runId, nameId, deepClearance } = params
-  const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
 
   queryClient.setQueriesData<unknown>(
     {
-      predicate: (query) => queryKeyHasPrefix(query.queryKey, runScopedQueryPrefix),
+      predicate: getRunNamesQueryPredicate(runId),
     },
     (current: unknown) => {
-      if (current === null || current === undefined) {
-        return current
-      }
-
-      if (typeof current !== 'object') {
-        return current
-      }
-
-      if (Array.isArray(current)) {
+      if (!current || typeof current !== 'object' || Array.isArray(current)) {
         return current
       }
 
@@ -85,30 +171,16 @@ export function updateNameCandidateDeepClearance(
           current as NameCandidateListResponse,
           nameId,
           (candidate) => {
-            const nextDeepClearance: DeepClearance = deepClearance
-            if (nextDeepClearance === candidate.deep_clearance) {
+            if (deepClearance === candidate.deep_clearance) {
               return candidate
             }
 
             return {
               ...candidate,
-              deep_clearance: nextDeepClearance,
+              deep_clearance: deepClearance,
             }
           },
         )
-      }
-
-      if ('id' in current && current.id === nameId) {
-        const candidate = current as NameCandidateResponse
-        const nextDeepClearance: DeepClearance = deepClearance
-        if (nextDeepClearance === candidate.deep_clearance) {
-          return current
-        }
-
-        return {
-          ...candidate,
-          deep_clearance: nextDeepClearance,
-        } satisfies NameCandidateResponse
       }
 
       return current
@@ -116,130 +188,87 @@ export function updateNameCandidateDeepClearance(
   )
 }
 
+export function optimisticallyPatchNameDetailCache(
+  queryClient: QueryClient,
+  params: {
+    nameId: string
+    patch: NameCandidatePatchShape
+  },
+): RunNamesOptimisticRollbackContext {
+  const { nameId, patch } = params
+  const detailQueryKey = namesKeys.detail(nameId)
+  const current = queryClient.getQueryData<NameCandidateDetailResponse>(detailQueryKey)
+
+  if (!current) {
+    return { snapshots: [] }
+  }
+
+  const next = patchNameDetailCandidate(current, patch)
+  if (next === current) {
+    return { snapshots: [] }
+  }
+
+  queryClient.setQueryData<NameCandidateDetailResponse>(detailQueryKey, next)
+
+  return {
+    snapshots: [
+      {
+        queryKey: detailQueryKey,
+        previousData: current,
+      },
+    ],
+  }
+}
+
 export function optimisticallySetShortlistedAcrossRunCaches(
   queryClient: QueryClient,
   params: {
-    runId: string
+    runId?: string
     nameId: string
     shortlisted: boolean
   },
 ): RunNamesOptimisticRollbackContext {
-  const { runId, nameId, shortlisted } = params
-  const snapshots: RunNamesQuerySnapshot[] = []
-  const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
-  const nowIso = new Date().toISOString()
-
-  queryClient
-    .getQueriesData<NameCandidateListResponse>({
-      queryKey: runScopedQueryPrefix,
-    })
-    .forEach(([queryKey, current]) => {
-      if (!current) {
-        return
-      }
-
-      const next = updateCandidateInCachedList(current, nameId, (candidate) => ({
-        ...candidate,
-        shortlisted,
-        updated_at: nowIso,
-      }))
-
-      if (next === current) {
-        return
-      }
-
-      snapshots.push({
-        queryKey,
-        previousData: current,
-      })
-      queryClient.setQueryData<NameCandidateListResponse>(queryKey, next)
-    })
-
-  return { snapshots }
+  return patchRunNamesCaches(queryClient, {
+    runId: params.runId,
+    nameId: params.nameId,
+    patch: {
+      shortlisted: params.shortlisted,
+    },
+  })
 }
 
 export function optimisticallySetSelectedForClearanceAcrossRunCaches(
   queryClient: QueryClient,
   params: {
-    runId: string
+    runId?: string
     nameId: string
     selectedForClearance: boolean
   },
 ): RunNamesOptimisticRollbackContext {
-  const { runId, nameId, selectedForClearance } = params
-  const snapshots: RunNamesQuerySnapshot[] = []
-  const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
-  const nowIso = new Date().toISOString()
-
-  queryClient
-    .getQueriesData<NameCandidateListResponse>({
-      queryKey: runScopedQueryPrefix,
-    })
-    .forEach(([queryKey, current]) => {
-      if (!current) {
-        return
-      }
-
-      const next = updateCandidateInCachedList(current, nameId, (candidate) => ({
-        ...candidate,
-        selected_for_clearance: selectedForClearance,
-        updated_at: nowIso,
-      }))
-
-      if (next === current) {
-        return
-      }
-
-      snapshots.push({
-        queryKey,
-        previousData: current,
-      })
-      queryClient.setQueryData<NameCandidateListResponse>(queryKey, next)
-    })
-
-  return { snapshots }
+  return patchRunNamesCaches(queryClient, {
+    runId: params.runId,
+    nameId: params.nameId,
+    patch: {
+      selected_for_clearance: params.selectedForClearance,
+    },
+  })
 }
 
 export function optimisticallySetNotesAcrossRunCaches(
   queryClient: QueryClient,
   params: {
-    runId: string
+    runId?: string
     nameId: string
     notes: string | null
   },
 ): RunNamesOptimisticRollbackContext {
-  const { runId, nameId, notes } = params
-  const snapshots: RunNamesQuerySnapshot[] = []
-  const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
-  const nowIso = new Date().toISOString()
-
-  queryClient
-    .getQueriesData<NameCandidateListResponse>({
-      queryKey: runScopedQueryPrefix,
-    })
-    .forEach(([queryKey, current]) => {
-      if (!current) {
-        return
-      }
-
-      const next = updateCandidateInCachedList(current, nameId, (candidate) => ({
-        ...candidate,
-        notes,
-        updated_at: nowIso,
-      }))
-
-      if (next === current) {
-        return
-      }
-
-      snapshots.push({
-        queryKey,
-        previousData: current,
-      })
-      queryClient.setQueryData<NameCandidateListResponse>(queryKey, next)
-    })
-
-  return { snapshots }
+  return patchRunNamesCaches(queryClient, {
+    runId: params.runId,
+    nameId: params.nameId,
+    patch: {
+      notes: params.notes,
+    },
+  })
 }
 
 export function mergePatchedCandidateAcrossRunCaches(
@@ -250,11 +279,10 @@ export function mergePatchedCandidateAcrossRunCaches(
   },
 ): void {
   const { runId, candidate } = params
-  const runScopedQueryPrefix = runNamesRunQueryKeyPrefix(runId)
 
   queryClient
     .getQueriesData<NameCandidateListResponse>({
-      queryKey: runScopedQueryPrefix,
+      predicate: getRunNamesQueryPredicate(runId),
     })
     .forEach(([queryKey, current]) => {
       if (!current) {
@@ -270,6 +298,36 @@ export function mergePatchedCandidateAcrossRunCaches(
     })
 }
 
+export function mergePatchedCandidateIntoNameDetailCache(
+  queryClient: QueryClient,
+  params: {
+    nameId: string
+    candidate: Pick<
+      NameCandidateResponse,
+      'shortlisted' | 'selected_for_clearance' | 'notes'
+    >
+  },
+): void {
+  const { nameId, candidate } = params
+
+  queryClient.setQueryData<NameCandidateDetailResponse>(
+    namesKeys.detail(nameId),
+    (current) => {
+      if (!current) {
+        return current
+      }
+
+      const next = patchNameDetailCandidate(current, {
+        shortlisted: candidate.shortlisted,
+        selected_for_clearance: candidate.selected_for_clearance,
+        notes: candidate.notes,
+      })
+
+      return next
+    },
+  )
+}
+
 export function rollbackRunNamesOptimisticUpdate(
   queryClient: QueryClient,
   context: RunNamesOptimisticRollbackContext | undefined,
@@ -279,6 +337,6 @@ export function rollbackRunNamesOptimisticUpdate(
   }
 
   context.snapshots.forEach(({ queryKey, previousData }) => {
-    queryClient.setQueryData<NameCandidateListResponse>(queryKey, previousData)
+    queryClient.setQueryData(queryKey, previousData)
   })
 }

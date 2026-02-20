@@ -1,11 +1,13 @@
 import { request } from '@/lib/api/client'
 import {
-  DEFAULT_RUN_NAMES_LIST_LIMIT,
-  DEFAULT_RUN_NAMES_LIST_OFFSET,
+  normalizeNameCandidateListQueryParams,
+  type NameCandidateDetailResponse,
   type NameCandidateListQueryParams,
   type NameCandidateListResponse,
+  type NameCandidatePatchEnvelope,
   type NameCandidatePatchRequest,
   type NameCandidatePatchResponse,
+  type NormalizedNameCandidateListQueryParams,
 } from '@/lib/api/names.types'
 
 function appendQueryParam(
@@ -20,25 +22,41 @@ function appendQueryParam(
   query.set(key, String(value))
 }
 
-export async function listRunNames(
+export function normalizeRunNamesParams(
+  params: NameCandidateListQueryParams = {},
+): NormalizedNameCandidateListQueryParams {
+  return normalizeNameCandidateListQueryParams(params)
+}
+
+export async function getRunNames(
   runId: string,
   params: NameCandidateListQueryParams = {},
 ): Promise<NameCandidateListResponse> {
+  const normalizedParams = normalizeRunNamesParams(params)
   const query = new URLSearchParams()
-  appendQueryParam(query, 'family', params.family)
-  appendQueryParam(query, 'territory_card_id', params.territory_card_id)
-  appendQueryParam(query, 'format', params.format)
-  appendQueryParam(query, 'score_min', params.score_min)
-  appendQueryParam(query, 'score_max', params.score_max)
-  appendQueryParam(query, 'clearance_status', params.clearance_status)
-  appendQueryParam(query, 'shortlisted', params.shortlisted)
-  appendQueryParam(query, 'selected_for_clearance', params.selected_for_clearance)
-  appendQueryParam(query, 'selected_for_final', params.selected_for_final)
-  appendQueryParam(query, 'search', params.search)
-  appendQueryParam(query, 'sort_by', params.sort_by)
-  appendQueryParam(query, 'sort_dir', params.sort_dir)
-  appendQueryParam(query, 'limit', params.limit ?? DEFAULT_RUN_NAMES_LIST_LIMIT)
-  appendQueryParam(query, 'offset', params.offset ?? DEFAULT_RUN_NAMES_LIST_OFFSET)
+
+  appendQueryParam(query, 'family', normalizedParams.family)
+  appendQueryParam(query, 'territory_card_id', normalizedParams.territory_card_id)
+  appendQueryParam(query, 'format', normalizedParams.format)
+  appendQueryParam(query, 'score_min', normalizedParams.score_min)
+  appendQueryParam(query, 'score_max', normalizedParams.score_max)
+  appendQueryParam(query, 'clearance_status', normalizedParams.clearance_status)
+  appendQueryParam(query, 'deep_uspto_status', normalizedParams.deep_uspto_status)
+  appendQueryParam(query, 'domain_status', normalizedParams.domain_status)
+  appendQueryParam(query, 'social_status', normalizedParams.social_status)
+  appendQueryParam(query, 'platform', normalizedParams.platform)
+  appendQueryParam(query, 'shortlisted', normalizedParams.shortlisted)
+  appendQueryParam(
+    query,
+    'selected_for_clearance',
+    normalizedParams.selected_for_clearance,
+  )
+  appendQueryParam(query, 'selected_for_final', normalizedParams.selected_for_final)
+  appendQueryParam(query, 'search', normalizedParams.search)
+  appendQueryParam(query, 'sort_by', normalizedParams.sort_by)
+  appendQueryParam(query, 'sort_dir', normalizedParams.sort_dir)
+  appendQueryParam(query, 'limit', normalizedParams.limit)
+  appendQueryParam(query, 'offset', normalizedParams.offset)
 
   const encodedRunId = encodeURIComponent(runId)
   const queryString = query.toString()
@@ -48,15 +66,25 @@ export async function listRunNames(
   })
 }
 
+export const listRunNames = getRunNames
+
+export async function getNameCandidate(nameId: string): Promise<NameCandidateDetailResponse> {
+  return request<NameCandidateDetailResponse>(`/names/${encodeURIComponent(nameId)}`, {
+    method: 'GET',
+  })
+}
+
 export async function patchNameCandidate(
   nameId: string,
-  patch: NameCandidatePatchRequest,
+  payload: NameCandidatePatchRequest,
 ): Promise<NameCandidatePatchResponse> {
-  return request<NameCandidatePatchResponse, NameCandidatePatchRequest>(
+  const response = await request<NameCandidatePatchEnvelope, NameCandidatePatchRequest>(
     `/names/${encodeURIComponent(nameId)}`,
     {
       method: 'PATCH',
-      body: patch,
+      body: payload,
     },
   )
+
+  return response.item
 }

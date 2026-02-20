@@ -1750,3 +1750,80 @@
 - Social utilities
   - import: `@/lib/status/social` (or `@/lib/status`)
   - functions: `normalizeSocialStatus`, `formatSocialStatusSummary`
+
+## 2026-02-20 17:53 GMT - Phase 10 API/query alignment: name detail, exec summary, retry payload + stable keys
+
+### Files changed
+- `frontend/src/lib/api/names.types.ts`
+- `frontend/src/lib/api/names.ts`
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/lib/api/runs.ts`
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/features/names/queryKeys.ts`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/features/names/queries.ts`
+- `frontend/src/features/runs/queries.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### New exported API functions
+- `getRunNames(runId, params)` -> `GET /api/v1/runs/{runId}/names`
+- `getNameCandidate(nameId)` -> `GET /api/v1/names/{nameId}`
+- `patchNameCandidate(nameId, payload)` -> `PATCH /api/v1/names/{nameId}` (unwraps `DetailResponse.item`)
+- `getExecutiveSummary(runId)` -> `GET /api/v1/runs/{runId}/executive-summary`
+- `retryRun(runId, payload?)` -> `POST /api/v1/runs/{runId}/retry`
+
+### Hook surface added/updated
+- `useRunNamesQuery(runId, params, options)`
+- `useRunNamesAllQuery(runId, params, options)`
+- `useNameCandidateQuery(nameId, options)`
+- `usePatchNameCandidateMutation()`
+- `useRunDeepClearanceMutation()`
+- `useExecutiveSummaryQuery(runId)`
+- `useRetryRunMutation()` (now accepts optional `payload`)
+
+### Final query key shapes (factory outputs)
+```ts
+// frontend/src/features/names/queryKeys.ts
+namesKeys.runNames(runId, params) => ['run', runId, 'names', normalizedParams]
+namesKeys.detail(nameId) => ['name', nameId]
+
+// frontend/src/features/runs/queries.ts
+execSummaryQueryKey(runId) => ['run', runId, 'exec-summary']
+```
+
+### Params normalization/stability notes
+- Added `normalizeNameCandidateListQueryParams(...)` in `names.types.ts` and reused it for both:
+  - query key params segment
+  - request query-string serialization
+- Normalization behavior:
+  - strips `undefined` keys
+  - trims/omits empty `search` and `clearance_status`
+  - defaults `limit`/`offset` to `100`/`0`
+  - keeps output JSON-serializable and deterministic in property order
+
+### Optimistic update behavior
+- `usePatchNameCandidateMutation` `onMutate` now updates and snapshots both:
+  - detail cache: `['name', nameId]`
+  - matching run names list caches: `['run', runId, 'names', params]` (or all run-name caches when `runId` not supplied)
+- Rollback uses reverse-order snapshot restore on error.
+- Success merges patched server row into list caches and patch-fields into detail cache.
+- Removed forced post-mutation list invalidation for patches to avoid unnecessary refetch churn and preserve drawer edit continuity.
+
+### API contract alignment notes
+- Names list query params now include deep-clearance facets supported by backend:
+  - `deep_uspto_status`, `domain_status`, `social_status`, `platform`
+- `patchNameCandidate` payload typing is restricted to backend contract fields only:
+  - `notes`, `shortlisted`, `selected_for_clearance`
+- `retryRun` now supports optional body fields:
+  - `from_stage` (0-11)
+  - `name_candidate_ids`
+  - undefined/empty payload sends POST with no body.
+
+### Verification run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
+### Manual runtime notes
+- Browser-level drawer interaction checks (open/edit notes/close/reopen and refetch behavior) were not executable in this sandbox session.
+- Code-path verification confirms drawer-bound patch mutation updates cache directly (detail + list) with no mutation-triggered refetch invalidation.

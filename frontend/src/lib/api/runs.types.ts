@@ -1,4 +1,5 @@
 import type { DeepClearance } from '@/lib/api/names.types'
+import type { TerritoryCard } from '@/lib/api/territoryReview.types'
 
 export const RUN_SSE_EVENT_TYPES = [
   'snapshot',
@@ -71,6 +72,13 @@ export interface CancelRunResponse {
 
 export interface DeepClearanceTriggerResponse {
   selected_count: number
+}
+
+export type RunStageIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11
+
+export interface RetryRunRequestBody {
+  from_stage?: RunStageIndex
+  name_candidate_ids?: string[]
 }
 
 export type NameClearanceType = 'trademark' | 'domain' | 'social'
@@ -163,4 +171,32 @@ export type SSEEvent =
 
 export interface StartRunRequestBody {
   fail_at_stage?: number | null
+}
+
+export interface ExecutiveSummaryBriefSnapshot {
+  brief: Record<string, unknown> | null
+  dials: Record<string, unknown> | null
+}
+
+export interface ExecutiveSummaryRunSettingsSnapshot {
+  run_state: RunState
+  current_stage: string | null
+  started_at: string | null
+  completed_at: string | null
+  progress: Record<string, unknown>
+  version_dials: Record<string, unknown> | null
+}
+
+export interface ExecutiveSummaryConstraintShortfallsSnapshot {
+  from_progress: Record<string, unknown> | null
+  from_stage8_artifacts: Record<string, unknown> | null
+}
+
+export interface ExecutiveSummaryResponse {
+  run_id: string
+  brief_snapshot: ExecutiveSummaryBriefSnapshot
+  research_snapshot: Record<string, unknown>
+  approved_territory_cards: TerritoryCard[]
+  run_settings: ExecutiveSummaryRunSettingsSnapshot
+  constraint_shortfalls: ExecutiveSummaryConstraintShortfallsSnapshot
 }

@@ -8,15 +8,19 @@ import {
 } from '@/features/versions/queries'
 import {
   cancelRun,
+  getExecutiveSummary,
   getRunStatus,
   retryRun,
   startRun,
+  type ExecutiveSummaryResponse,
+  type RetryRunRequestBody,
   type RunState,
   type RunStatusResponse,
   type RunSummaryResponse,
 } from '@/lib/api'
 
 export const runStatusQueryKey = (runId: string) => ['runs', 'status', runId] as const
+export const execSummaryQueryKey = (runId: string) => ['run', runId, 'exec-summary'] as const
 
 export function isTerminalRunState(state: RunState): boolean {
   return state === 'complete' || state === 'failed'
@@ -35,6 +39,17 @@ export function useRunStatusQuery(runId: string | undefined) {
 
       return isTerminalRunState(data.state) ? false : 5000
     },
+    meta: {
+      suppressGlobalErrorToast: true,
+    },
+  })
+}
+
+export function useExecutiveSummaryQuery(runId: string | undefined) {
+  return useQuery<ExecutiveSummaryResponse>({
+    queryKey: runId ? execSummaryQueryKey(runId) : ['run', 'missing-id', 'exec-summary'],
+    queryFn: () => getExecutiveSummary(runId as string),
+    enabled: Boolean(runId),
     meta: {
       suppressGlobalErrorToast: true,
     },
@@ -137,13 +152,14 @@ export interface RetryRunVariables {
   runId: string
   projectId?: string
   versionId?: string
+  payload?: RetryRunRequestBody
 }
 
 export function useRetryRunMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ runId }: RetryRunVariables) => retryRun(runId),
+    mutationFn: ({ runId, payload }: RetryRunVariables) => retryRun(runId, payload),
     meta: {
       suppressGlobalErrorToast: true,
     },

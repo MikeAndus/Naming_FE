@@ -10,7 +10,9 @@ import type {
 import type {
   CancelRunResponse,
   DeepClearanceTriggerResponse,
+  ExecutiveSummaryResponse,
   NameClearanceType,
+  RetryRunRequestBody,
   RunSSEEventType,
   RunState,
   RunStatusResponse,
@@ -635,10 +637,42 @@ export async function cancelRun(runId: string): Promise<CancelRunResponse> {
   return parseCancelRunResponse(response)
 }
 
-export async function retryRun(runId: string): Promise<RunStatusResponse> {
-  const response = await request<unknown>(`/runs/${encodeURIComponent(runId)}/retry`, {
-    method: 'POST',
+export async function getExecutiveSummary(runId: string): Promise<ExecutiveSummaryResponse> {
+  return request<ExecutiveSummaryResponse>(`/runs/${encodeURIComponent(runId)}/executive-summary`, {
+    method: 'GET',
   })
+}
+
+function normalizeRetryRunPayload(
+  payload: RetryRunRequestBody | undefined,
+): RetryRunRequestBody | undefined {
+  if (!payload) {
+    return undefined
+  }
+
+  const normalized: RetryRunRequestBody = {
+    ...(payload.from_stage !== undefined ? { from_stage: payload.from_stage } : {}),
+    ...(payload.name_candidate_ids !== undefined
+      ? { name_candidate_ids: payload.name_candidate_ids }
+      : {}),
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined
+}
+
+export async function retryRun(
+  runId: string,
+  payload?: RetryRunRequestBody,
+): Promise<RunStatusResponse> {
+  const normalizedPayload = normalizeRetryRunPayload(payload)
+
+  const response = await request<unknown, RetryRunRequestBody>(
+    `/runs/${encodeURIComponent(runId)}/retry`,
+    {
+      method: 'POST',
+      ...(normalizedPayload ? { body: normalizedPayload } : {}),
+    },
+  )
   return parseRunStatusResponse(response)
 }
 
