@@ -1453,3 +1453,41 @@
 
 ### Follow-ups / edge cases
 - Runtime browser verification with a live backend run state transition (`stage_8` -> `generation_review`) remains recommended to visually confirm CTA timing and click-through behavior in both pages.
+
+## 2026-02-20 08:19 GMT - Deep clearance typing + name-clearance SSE payload type + cache helper
+
+### Files changed
+- `frontend/src/lib/api/names.types.ts`
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/lib/api/index.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### Summary
+- Added typed deep-clearance API models in `names.types.ts`:
+  - `DeepClearance`
+  - `TrademarkClearance` + `TrademarkClearanceStatus` + `TrademarkSimilarMark`
+  - `DomainClearance` + `DomainClearanceStatus`
+  - `SocialClearance` + `SocialClearanceMap` + `SocialClearanceStatus`
+- Updated `NameCandidateResponse.deep_clearance` from `Record<string, unknown> | null` to `DeepClearance | null`.
+- Added SSE payload typing in `runs.types.ts`:
+  - `NameClearanceType` (`'trademark' | 'domain' | 'social'`)
+  - `NameClearanceUpdateEvent` with fields `event_type`, `run_id`, `name_id`, `clearance_type`, `deep_clearance`.
+- Exported the new API and SSE types via `frontend/src/lib/api/index.ts`.
+
+### Cache helper
+- Added `updateNameCandidateDeepClearance(...)` in `frontend/src/features/names/optimistic.ts`.
+- Helper behavior:
+  - updates cached name-candidate data by `nameId` without refetch
+  - scopes cache selection by existing run names key factory prefix (`runNamesRunQueryKeyPrefix(runId)`)
+  - uses `queryClient.setQueriesData(..., { predicate })` for immutable cache transforms
+  - merges deep-clearance snapshots top-level before assigning (`{ ...prevDeepClearance, ...incomingDeepClearance }`)
+  - updates list caches (`{ items: NameCandidateResponse[] }`) and also supports candidate-shaped cache entries under the same prefix when present.
+
+### Commands run
+- `cd frontend && npm run lint`
+- `cd frontend && npm run typecheck`
+- `cd frontend && npm run build`
+
+### Follow-up
+- Next node should wire `NameClearanceUpdateEvent` handling into the SSE consumer to call `updateNameCandidateDeepClearance(...)` when `name_clearance_update` events are received.

@@ -41,6 +41,8 @@ export {
   RUN_SSE_EVENT_TYPES,
   type CancelRunResponse,
   type DeepClearanceTriggerResponse,
+  type NameClearanceType,
+  type NameClearanceUpdateEvent,
   type RunSSEEventType,
   type RunState,
   type RunStatusResponse,
@@ -55,6 +57,9 @@ export {
   patchNameCandidate,
 } from '@/lib/api/names'
 export type {
+  DeepClearance,
+  DomainClearance,
+  DomainClearanceStatus,
   FastClearance,
   FastClearancePending,
   FastClearanceSuccess,
@@ -71,6 +76,12 @@ export type {
   NameCandidateSortDirection,
   NameFamily,
   NameFormat,
+  SocialClearance,
+  SocialClearanceMap,
+  SocialClearanceStatus,
+  TrademarkClearance,
+  TrademarkClearanceStatus,
+  TrademarkSimilarMark,
 } from '@/lib/api/names.types'
 export {
   DEFAULT_RUN_NAMES_LIST_LIMIT,

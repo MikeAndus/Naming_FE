@@ -1,3 +1,5 @@
+import type { DeepClearance } from '@/lib/api/names.types'
+
 export const RUN_SSE_EVENT_TYPES = [
   'snapshot',
   'stage_started',
@@ -67,6 +69,16 @@ export interface CancelRunResponse {
 
 export interface DeepClearanceTriggerResponse {
   selected_count: number
+}
+
+export type NameClearanceType = 'trademark' | 'domain' | 'social'
+
+export interface NameClearanceUpdateEvent {
+  event_type: 'name_clearance_update'
+  run_id: string
+  name_id: string
+  clearance_type: NameClearanceType
+  deep_clearance: DeepClearance
 }
 
 type BaseSSEEvent<TEventType extends RunSSEEventType, TData> = {

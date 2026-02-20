@@ -40,6 +40,51 @@ export interface FastClearancePending {
 
 export type FastClearance = FastClearanceSuccess | FastClearanceUnknown | FastClearancePending
 
+export type TrademarkClearanceStatus = 'green' | 'amber' | 'red' | 'unknown'
+
+export interface TrademarkSimilarMark {
+  mark_name: string
+  serial_number?: string
+  registration_number?: string
+  status?: string
+  class_codes?: Array<string | number>
+  description?: string
+}
+
+export interface TrademarkClearance {
+  status: TrademarkClearanceStatus
+  checked_at: string
+  reason?: string
+  similar_marks: TrademarkSimilarMark[]
+  raw_response?: unknown
+}
+
+export type DomainClearanceStatus = 'available' | 'taken' | 'unknown'
+
+export interface DomainClearance {
+  status: DomainClearanceStatus
+  domain_name: string
+  checked_at: string
+  reason?: string
+}
+
+export type SocialClearanceStatus = 'clear' | 'busy' | 'mixed' | 'unknown'
+
+export interface SocialClearance {
+  status: SocialClearanceStatus
+  handle: string
+  checked_at: string
+  reason?: string
+}
+
+export type SocialClearanceMap = Record<string, SocialClearance>
+
+export interface DeepClearance {
+  trademark?: TrademarkClearance
+  domain?: DomainClearance
+  socials?: SocialClearanceMap
+}
+
 export interface NameCandidateResponse {
   id: string
   run_id: string
@@ -52,7 +97,7 @@ export interface NameCandidateResponse {
   backstory: string | null
   scores: NameCandidateScores
   fast_clearance: FastClearance
-  deep_clearance: Record<string, unknown> | null
+  deep_clearance: DeepClearance | null
   origin: Record<string, unknown> | null
   selected_for_clearance: boolean
   selected_for_final: boolean
