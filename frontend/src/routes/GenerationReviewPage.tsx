@@ -40,7 +40,8 @@ import {
   useRunNamesQuery,
 } from '@/features/names/queries'
 import { projectDetailQueryKey, useProjectDetailQuery } from '@/features/projects/queries'
-import { runStatusQueryKey, useRunStatusQuery } from '@/features/runs/queries'
+import { runStatusQueryKey, useRetryRunMutation, useRunStatusQuery } from '@/features/runs/queries'
+import { DEEP_CLEARANCE_RETRY_FROM_STAGE } from '@/features/runs/stageMetadata'
 import {
   projectVersionsQueryKey,
   useVersionDetailQuery,
@@ -236,6 +237,7 @@ export function GenerationReviewPage() {
   const lastDrawerTriggerRef = useRef<HTMLElement | null>(null)
   const patchNameCandidateMutation = usePatchNameCandidateMutation()
   const deepClearanceMutation = useRunDeepClearanceMutation()
+  const retryRunMutation = useRetryRunMutation()
 
   const debouncedSearch = useDebouncedValue(filters.search, 300)
   const effectiveFilters = useMemo(
@@ -327,8 +329,13 @@ export function GenerationReviewPage() {
 
   const isNamesLoading =
     filteredNamesQuery.isLoading || (filteredNamesQuery.isFetching && !filteredNamesQuery.data)
-  const isDeepClearanceRunStateEligible = resolvedRunState === 'generation_review'
-  const isVersionComplete = versionQuery.data?.state === 'complete'
+  const isDeepClearanceStartEligible = resolvedRunState === 'generation_review'
+  const isDeepClearanceRetryEligible = resolvedRunState === 'complete'
+  const deepClearanceMode = isDeepClearanceRetryEligible ? 'retry' : 'start'
+  const isDeepClearanceActionEligible =
+    isDeepClearanceStartEligible || isDeepClearanceRetryEligible
+  const isDeepClearanceActionPending =
+    deepClearanceMutation.isPending || retryRunMutation.isPending
 
   const warnings = useMemo(() => {
     let unknownCount = 0
@@ -419,51 +426,92 @@ export function GenerationReviewPage() {
   }
 
   const handleRunDeepClearance = () => {
-    if (!runId || !isDeepClearanceRunStateEligible || isVersionComplete) {
+    if (!runId || !isDeepClearanceActionEligible) {
       return
     }
 
-    deepClearanceMutation.mutate(
+    if (selectedForClearanceNames.length === 0) {
+      return
+    }
+
+    const invalidateRunContext = () => {
+      void queryClient.invalidateQueries({
+        queryKey: runStatusQueryKey(runId),
+        exact: true,
+      })
+
+      if (versionId) {
+        void queryClient.invalidateQueries({
+          queryKey: versionDetailQueryKey(versionId),
+          exact: true,
+        })
+      }
+
+      if (projectId) {
+        void queryClient.invalidateQueries({
+          queryKey: projectDetailQueryKey(projectId),
+          exact: true,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: projectVersionsQueryKey(projectId),
+          exact: true,
+        })
+      }
+    }
+
+    if (isDeepClearanceStartEligible) {
+      deepClearanceMutation.mutate(
+        {
+          runId,
+        },
+        {
+          onSuccess: (response) => {
+            setIsDeepClearanceDialogOpen(false)
+            toast({
+              title: 'Deep clearance started',
+              description: `Running deep clearance on ${response.selected_count} names.`,
+            })
+
+            invalidateRunContext()
+            navigate(runMonitorHref)
+          },
+          onError: (error) => {
+            toast({
+              variant: 'destructive',
+              title: 'Failed to run deep clearance',
+              description: getErrorMessage(error, 'Please try again.'),
+            })
+          },
+        },
+      )
+      return
+    }
+
+    retryRunMutation.mutate(
       {
         runId,
+        projectId,
+        versionId,
+        payload: {
+          from_stage: DEEP_CLEARANCE_RETRY_FROM_STAGE,
+          name_candidate_ids: selectedForClearanceNames.map((candidate) => candidate.id),
+        },
       },
       {
-        onSuccess: (response) => {
+        onSuccess: () => {
           setIsDeepClearanceDialogOpen(false)
           toast({
-            title: 'Deep clearance started',
-            description: `Running deep clearance on ${response.selected_count} names.`,
+            title: 'Deep-clearance retry started',
+            description: `Retrying deep clearance for ${selectedForClearanceNames.length} names.`,
           })
 
-          void queryClient.invalidateQueries({
-            queryKey: runStatusQueryKey(runId),
-            exact: true,
-          })
-
-          if (versionId) {
-            void queryClient.invalidateQueries({
-              queryKey: versionDetailQueryKey(versionId),
-              exact: true,
-            })
-          }
-
-          if (projectId) {
-            void queryClient.invalidateQueries({
-              queryKey: projectDetailQueryKey(projectId),
-              exact: true,
-            })
-            void queryClient.invalidateQueries({
-              queryKey: projectVersionsQueryKey(projectId),
-              exact: true,
-            })
-          }
-
+          invalidateRunContext()
           navigate(runMonitorHref)
         },
         onError: (error) => {
           toast({
             variant: 'destructive',
-            title: 'Failed to run deep clearance',
+            title: 'Failed to retry deep clearance',
             description: getErrorMessage(error, 'Please try again.'),
           })
         },
@@ -795,9 +843,9 @@ export function GenerationReviewPage() {
       </p>
 
       <DeepClearanceActionBar
-        isPending={deepClearanceMutation.isPending}
-        isTerminalComplete={isVersionComplete}
-        isRunStateEligible={isDeepClearanceRunStateEligible}
+        isPending={isDeepClearanceActionPending}
+        isRunStateEligible={isDeepClearanceActionEligible}
+        mode={deepClearanceMode}
         onRunDeepClearance={() => {
           setIsDeepClearanceDialogOpen(true)
         }}
@@ -807,12 +855,13 @@ export function GenerationReviewPage() {
       />
 
       <DeepClearanceConfirmDialog
-        isPending={deepClearanceMutation.isPending}
-        isTerminalComplete={isVersionComplete}
-        isRunStateEligible={isDeepClearanceRunStateEligible}
+        isPending={isDeepClearanceActionPending}
+        isRunStateEligible={isDeepClearanceActionEligible}
+        mode={deepClearanceMode}
         onConfirm={handleRunDeepClearance}
         onOpenChange={setIsDeepClearanceDialogOpen}
         open={isDeepClearanceDialogOpen}
+        retryFromStage={DEEP_CLEARANCE_RETRY_FROM_STAGE}
         selectedNames={selectedForClearanceNames}
       />
 

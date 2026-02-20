@@ -462,6 +462,81 @@
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
 
+## 2026-02-20 22:03 GMT - Run Monitor failure panel + confirmed retry/start-over + Phase-3 targeted retry wiring
+
+### High-level changes
+- Upgraded Run Monitor failure handling to keep run errors actionable and persistent:
+  - added always-visible overall progress/state card
+  - replaced ad-hoc failure textarea with a persistent expandable `Error details` panel
+  - added confirm dialog for `Retry from Stage N` and wired retry payload with explicit `from_stage` (`0-11`)
+  - added always-present `Start Over` CTA in the bottom action bar using the existing run-creation mutation path (`useStartRunMutation` -> `startRun`).
+- Extended deep-clearance action semantics in Results/Generation Review:
+  - preserved initial deep-clearance trigger flow during `generation_review` (`POST /runs/{id}/deep-clearance`)
+  - wired targeted retry flow for completed runs to `POST /runs/{id}/retry` with:
+    - `from_stage: 9` (Phase 3 restart stage)
+    - `name_candidate_ids: selected IDs`.
+
+### Files touched
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/features/names/components/DeepClearanceActionBar.tsx`
+- `frontend/src/features/names/components/DeepClearanceConfirmDialog.tsx`
+- `frontend/src/features/runs/stageMetadata.ts`
+
+### Run Monitor behavior details
+- Added `OverallProgressCard` to surface:
+  - run state label
+  - current stage label
+  - overall progress bar/percent (prefers backend `overall_progress_pct`, falls back to stage-derived estimate).
+- Added `RunErrorPanel` using shadcn `Accordion`:
+  - visible whenever `run.state === 'failed'`
+  - summary text derived from stage summary / run error detail
+  - details body renders `run.error_detail` as:
+    - plain string when non-JSON
+    - pretty JSON (`JSON.stringify(..., null, 2)`) when JSON payload.
+- Added `RetryRunDialog` confirmation:
+  - retry action now confirms before mutation
+  - sends `payload: { from_stage: <computed stage> }`
+  - retry failures show destructive toast and keep persistent error panel visible.
+- Added always-present `Start Over` button + confirm dialog in `RunActionBar`:
+  - triggers existing `useStartRunMutation` flow
+  - invalidation behavior remains centralized in existing runs query mutation logic.
+
+### Targeted deep-clearance retry wiring
+- Added Phase 3 retry stage constant export:
+  - `DEEP_CLEARANCE_RETRY_FROM_STAGE = 9` in `frontend/src/features/runs/stageMetadata.ts`.
+- In `GenerationReviewPage`:
+  - if run state is `generation_review`: existing deep-clearance start endpoint remains unchanged.
+  - if run state is `complete`: action now calls run retry mutation with subset IDs:
+    - `payload: { from_stage: 9, name_candidate_ids: selectedForClearanceNames.map(id) }`.
+- Updated deep-clearance action/confirm UI components to support `mode: 'start' | 'retry'` copy and button labels.
+
+### Manual test checklist to run locally
+1. Failed run -> open `/projects/:projectId/versions/:versionId/run-monitor`:
+   - verify persistent `Error details` accordion panel appears and can be expanded/collapsed.
+2. Retry succeeds:
+   - click `Retry from Stage N` -> confirm dialog -> confirm
+   - verify request body includes `{ from_stage: N }`
+   - verify monitor transitions from failed to active states without hard refresh.
+3. Retry fails (force backend 422):
+   - verify destructive toast appears
+   - verify monitor remains on page and persistent error panel stays visible.
+4. Start Over:
+   - click `Start Over` from any run state (including failed)
+   - confirm dialog and verify existing run creation flow starts a new run.
+5. Targeted deep-clearance retry:
+   - in completed Results state, select subset names
+   - click deep-clearance action -> confirm
+   - verify request is `POST /api/v1/runs/{id}/retry` with:
+     - `from_stage: 9`
+     - `name_candidate_ids: [selected UUIDs]`
+   - verify retry errors show transient toasts.
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)
+
 ## 2026-02-20 21:06 GMT - Version Detail tabs container + persistent SSE across tabs with names polling self-heal
 
 ### Version Detail container + routing changes

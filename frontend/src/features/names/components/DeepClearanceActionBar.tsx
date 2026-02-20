@@ -5,7 +5,7 @@ interface DeepClearanceActionBarProps {
   showingCount: number
   totalCount: number
   selectedCount: number
-  isTerminalComplete: boolean
+  mode: 'start' | 'retry'
   isRunStateEligible: boolean
   isPending: boolean
   onRunDeepClearance: () => void
@@ -15,18 +15,22 @@ export function DeepClearanceActionBar({
   showingCount,
   totalCount,
   selectedCount,
-  isTerminalComplete,
+  mode,
   isRunStateEligible,
   isPending,
   onRunDeepClearance,
 }: DeepClearanceActionBarProps) {
   const isDisabledForSelection = selectedCount === 0
-  const isDisabledForRunState = !isRunStateEligible && !isTerminalComplete
-  const isButtonDisabled =
-    isPending || isDisabledForSelection || isDisabledForRunState || isTerminalComplete
-  const buttonLabel = `Run deep clearance on ${selectedCount} names`
-  const tooltipText = isTerminalComplete
-    ? 'Deep clearance complete. Fork this version to run clearance on additional names.'
+  const isDisabledForRunState = !isRunStateEligible
+  const isButtonDisabled = isPending || isDisabledForSelection || isDisabledForRunState
+  const buttonLabel =
+    mode === 'retry'
+      ? `Retry deep clearance on ${selectedCount} names`
+      : `Run deep clearance on ${selectedCount} names`
+  const tooltipText = isDisabledForRunState
+    ? mode === 'retry'
+      ? 'Deep-clearance retry is available once the run is complete.'
+      : 'Deep clearance is available during generation review.'
     : isDisabledForSelection
       ? 'Select at least one name for deep clearance'
       : null

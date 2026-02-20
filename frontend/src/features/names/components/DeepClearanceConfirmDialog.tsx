@@ -15,24 +15,25 @@ interface DeepClearanceConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedNames: NameCandidateResponse[]
-  isTerminalComplete: boolean
+  mode: 'start' | 'retry'
   isRunStateEligible: boolean
   isPending: boolean
   onConfirm: () => void
+  retryFromStage?: number
 }
 
 export function DeepClearanceConfirmDialog({
   open,
   onOpenChange,
   selectedNames,
-  isTerminalComplete,
+  mode,
   isRunStateEligible,
   isPending,
   onConfirm,
+  retryFromStage,
 }: DeepClearanceConfirmDialogProps) {
   const selectedCount = selectedNames.length
-  const isConfirmDisabled =
-    selectedCount === 0 || !isRunStateEligible || isTerminalComplete || isPending
+  const isConfirmDisabled = selectedCount === 0 || !isRunStateEligible || isPending
 
   return (
     <Dialog
@@ -57,9 +58,11 @@ export function DeepClearanceConfirmDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Run deep clearance</DialogTitle>
+          <DialogTitle>{mode === 'retry' ? 'Retry deep clearance' : 'Run deep clearance'}</DialogTitle>
           <DialogDescription>
-            This will start deep clearance for the selected names and continue the run.
+            {mode === 'retry'
+              ? `This retries deep clearance from Stage ${retryFromStage ?? 9} for the selected names.`
+              : 'This will start deep clearance for the selected names and continue the run.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -91,10 +94,10 @@ export function DeepClearanceConfirmDialog({
             {isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Starting...
+                Processing...
               </>
             ) : (
-              'Confirm'
+              mode === 'retry' ? 'Retry now' : 'Confirm'
             )}
           </Button>
         </DialogFooter>

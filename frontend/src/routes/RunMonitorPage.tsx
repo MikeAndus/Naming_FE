@@ -7,6 +7,12 @@ import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import {
   Card,
   CardContent,
   CardDescription,
@@ -24,7 +30,11 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
 import { useProjectDetailQuery } from '@/features/projects/queries'
-import { useCancelRunMutation, useRetryRunMutation } from '@/features/runs/queries'
+import {
+  useCancelRunMutation,
+  useRetryRunMutation,
+  useStartRunMutation,
+} from '@/features/runs/queries'
 import {
   GATE_DEFINITIONS,
   PHASE_HEADERS,
@@ -32,7 +42,13 @@ import {
   type GateDefinition,
 } from '@/features/runs/stageMetadata'
 import { useVersionDetailQuery } from '@/features/versions/queries'
-import { getErrorMessage, type RunState, type StageCheckpointResponse } from '@/lib/api'
+import {
+  getErrorMessage,
+  type RunStageIndex,
+  type RunState,
+  type RunStatusResponse,
+  type StageCheckpointResponse,
+} from '@/lib/api'
 import { useVersionDetailOutletContext } from '@/routes/versionDetailContext'
 import { toast } from '@/hooks/use-toast'
 
@@ -370,55 +386,133 @@ function getStageIdFromRunState(state: RunState | undefined): number | null {
   return parsed
 }
 
-function parseErrorDetail(errorDetail: string | null): string | null {
+function parseErrorDetailPayload(errorDetail: string | null): unknown {
   if (!errorDetail?.trim()) {
     return null
   }
 
   try {
-    const parsed = JSON.parse(errorDetail) as unknown
-
-    if (typeof parsed === 'string' && parsed.trim()) {
-      return parsed
-    }
-
-    if (Array.isArray(parsed)) {
-      const firstMessage = parsed.find((item) => typeof item === 'string')
-      if (typeof firstMessage === 'string' && firstMessage.trim()) {
-        return firstMessage
-      }
-
-      return JSON.stringify(parsed)
-    }
-
-    if (parsed && typeof parsed === 'object') {
-      const record = parsed as Record<string, unknown>
-      const candidates = [record.detail, record.error, record.message]
-      for (const candidate of candidates) {
-        if (typeof candidate === 'string' && candidate.trim()) {
-          return candidate
-        }
-      }
-
-      return JSON.stringify(parsed)
-    }
-
-    return String(parsed)
+    return JSON.parse(errorDetail) as unknown
   } catch {
     return errorDetail
   }
 }
 
-function getFailedStageMessage(stage: StageRow | null, runErrorDetail: string | null): string {
+function getErrorDetailSummary(errorDetail: string | null): string | null {
+  const payload = parseErrorDetailPayload(errorDetail)
+  if (!payload) {
+    return null
+  }
+
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  if (Array.isArray(payload)) {
+    const firstMessage = payload.find((item) => typeof item === 'string')
+    if (typeof firstMessage === 'string' && firstMessage.trim()) {
+      return firstMessage
+    }
+    return null
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    for (const key of ['detail', 'error', 'message']) {
+      const candidate = record[key]
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate
+      }
+    }
+  }
+
+  return null
+}
+
+function formatErrorDetail(errorDetail: string | null): string {
+  const payload = parseErrorDetailPayload(errorDetail)
+  if (!payload) {
+    return 'No additional error detail was provided.'
+  }
+
+  if (typeof payload === 'string') {
+    return payload
+  }
+
+  try {
+    return JSON.stringify(payload, null, 2)
+  } catch {
+    return String(payload)
+  }
+}
+
+function toRunStageIndex(value: number | null | undefined): RunStageIndex {
+  if (value === null || value === undefined || !Number.isInteger(value)) {
+    return 0
+  }
+
+  if (value <= 0) {
+    return 0
+  }
+
+  if (value >= 11) {
+    return 11
+  }
+
+  return value as RunStageIndex
+}
+
+function getFailedStageMessage(stage: StageRow | null, runErrorSummary: string | null): string {
   if (stage?.summary?.trim()) {
     return stage.summary
   }
 
-  if (runErrorDetail?.trim()) {
-    return runErrorDetail
+  if (runErrorSummary?.trim()) {
+    return runErrorSummary
   }
 
   return 'Stage failed. See logs.'
+}
+
+function getOverallProgressPct(runStatus: RunStatusResponse | null): number {
+  if (!runStatus) {
+    return 0
+  }
+
+  if (runStatus.state === 'complete') {
+    return 100
+  }
+
+  const reported = runStatus.progress?.overall_progress_pct
+  if (typeof reported === 'number' && Number.isFinite(reported)) {
+    return clampProgress(reported)
+  }
+
+  const sortedStages = [...runStatus.stages].sort((left, right) => left.stage_id - right.stage_id)
+  let completed = 0
+  let runningProgress = 0
+
+  for (const stage of sortedStages) {
+    if (stage.status === 'complete') {
+      completed += 1
+      continue
+    }
+
+    if (stage.status === 'running') {
+      runningProgress = clampProgress(stage.progress_pct)
+      break
+    }
+
+    if (stage.status === 'failed') {
+      runningProgress = clampProgress(stage.progress_pct)
+      break
+    }
+
+    break
+  }
+
+  return clampProgress(((completed * 100 + runningProgress) / (12 * 100)) * 100)
 }
 
 function getRunStateBadgeClass(state: RunState): string {
@@ -685,6 +779,111 @@ function ActiveStageSummaryCard({ stage }: { stage: StageRow }) {
   )
 }
 
+function OverallProgressCard({
+  runState,
+  currentStageId,
+  overallProgressPct,
+}: {
+  runState: RunState
+  currentStageId: number | null
+  overallProgressPct: number
+}) {
+  const stageLabel =
+    currentStageId !== null ? `Stage ${currentStageId}: ${getStageLabel(currentStageId)}` : 'No active stage'
+
+  return (
+    <Card>
+      <CardHeader className="space-y-2">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Overall progress</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm">{stageLabel}</CardTitle>
+          <Badge variant="outline">{runState.replaceAll('_', ' ')}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Progress value={overallProgressPct} />
+        <p className="text-xs text-muted-foreground">{overallProgressPct}% complete</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RunErrorPanel({
+  failedStageId,
+  summary,
+  detailText,
+}: {
+  failedStageId: number | null
+  summary: string
+  detailText: string
+}) {
+  return (
+    <Card className="border-destructive/40 bg-destructive/5">
+      <CardHeader className="space-y-2">
+        <CardTitle className="text-base text-destructive">
+          {failedStageId !== null ? `Stage ${failedStageId} failed` : 'Run failed'}
+        </CardTitle>
+        <CardDescription>{summary}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Accordion collapsible defaultValue="error-detail" type="single">
+          <AccordionItem className="border-destructive/30" value="error-detail">
+            <AccordionTrigger className="text-destructive hover:no-underline">
+              Error details
+            </AccordionTrigger>
+            <AccordionContent>
+              <Textarea className="min-h-28 font-mono text-xs" readOnly value={detailText} />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RetryRunDialog({
+  open,
+  onOpenChange,
+  retryStage,
+  retryLabel,
+  isPending,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  retryStage: RunStageIndex
+  retryLabel: string
+  isPending: boolean
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{retryLabel}</DialogTitle>
+          <DialogDescription>
+            This resumes the current run from Stage {retryStage}. Completed stage outputs remain
+            available.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            disabled={isPending}
+            onClick={() => onOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button disabled={isPending} onClick={onConfirm} type="button" variant="secondary">
+            {isPending ? 'Retrying...' : `Retry from Stage ${retryStage}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function TerritoryReviewPausedCard({ territoryReviewHref }: { territoryReviewHref: string }) {
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-4 text-amber-900">
@@ -735,6 +934,8 @@ export function RunMonitorPage() {
   const isDesktop = useIsDesktop()
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [retryDialogOpen, setRetryDialogOpen] = useState(false)
+  const [startOverDialogOpen, setStartOverDialogOpen] = useState(false)
   const hasRedirectedToResultsRef = useRef(false)
 
   const projectQuery = useProjectDetailQuery(projectId)
@@ -751,6 +952,7 @@ export function RunMonitorPage() {
 
   const cancelMutation = useCancelRunMutation()
   const retryMutation = useRetryRunMutation()
+  const startRunMutation = useStartRunMutation()
 
   useEffect(() => {
     if (!runStatus?.started_at || isTerminalRunState(runStatus.state)) {
@@ -858,14 +1060,21 @@ export function RunMonitorPage() {
     return rowsByPhase
   }, [runStatus?.state, stageRows])
 
-  const runErrorDetail = parseErrorDetail(runStatus?.error_detail ?? null)
-  const failedStageMessage = getFailedStageMessage(failedStage, runErrorDetail)
-  const failureDetailText =
+  const runErrorSummary = getErrorDetailSummary(runStatus?.error_detail ?? null)
+  const failedStageMessage = getFailedStageMessage(failedStage, runErrorSummary)
+  const runErrorDetailText = formatErrorDetail(runStatus?.error_detail ?? null)
+  const failureSummaryText =
     failedStageMessage?.trim() ||
     getErrorMessage(runStatus?.error_detail, 'Run failed. Retry to continue from the last checkpoint.')
   const isCancelled = isCancelledRun(runStatus?.progress ?? null)
   const canRetry = runStatus?.state === 'failed' && !isCancelled
   const canCancel = Boolean(latestRunId) && (runStatus ? !isTerminalRunState(runStatus.state) : false)
+  const canStartOver = Boolean(projectId && versionId) && !startRunMutation.isPending
+  const retryFromStage = toRunStageIndex(
+    failedStage?.stage_id ?? runStatus?.current_stage ?? runStatus?.stages.at(-1)?.stage_id ?? 0,
+  )
+  const retryLabel = failedStage ? `Retry from Stage ${retryFromStage}` : 'Retry run'
+  const overallProgressPct = getOverallProgressPct(runStatus)
   const showTerritoryReviewPaused = runStatus?.state === 'territory_review'
 
   const elapsedMs = getDurationMs(
@@ -915,7 +1124,7 @@ export function RunMonitorPage() {
     )
   }
 
-  const handleRetry = () => {
+  const handleRetryConfirm = () => {
     if (!latestRunId) {
       return
     }
@@ -925,6 +1134,9 @@ export function RunMonitorPage() {
         runId: latestRunId,
         projectId,
         versionId,
+        payload: {
+          from_stage: retryFromStage,
+        },
       },
       {
         onError: (error) => {
@@ -935,11 +1147,44 @@ export function RunMonitorPage() {
           })
         },
         onSuccess: (retriedRun) => {
+          setRetryDialogOpen(false)
           startRunProgress()
           toast({
             title: 'Retry started',
-            description: `Resumed run ${retriedRun.id}.`,
+            description: `Resumed run ${retriedRun.id} from Stage ${retryFromStage}.`,
           })
+        },
+      },
+    )
+  }
+
+  const handleStartOverConfirm = () => {
+    if (!projectId || !versionId) {
+      return
+    }
+
+    startRunMutation.mutate(
+      {
+        projectId,
+        versionId,
+        previousLatestRunId: latestRunId,
+      },
+      {
+        onError: (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to start over',
+            description: getErrorMessage(error, 'Please try again.'),
+          })
+        },
+        onSuccess: (runSummary) => {
+          setStartOverDialogOpen(false)
+          startRunProgress()
+          toast({
+            title: 'New run started',
+            description: `Started run ${runSummary.id}.`,
+          })
+          navigate(`/projects/${projectId}/versions/${versionId}/run-monitor`, { replace: true })
         },
       },
     )
@@ -1052,14 +1297,19 @@ export function RunMonitorPage() {
         <RunActionBar
           backHref={`/projects/${projectId}/versions/${versionId}`}
           canCancel={false}
+          canStartOver={canStartOver}
           showRetry={false}
           retryDisabled
+          retryLabel="Retry run"
           cancelDialogOpen={cancelDialogOpen}
           cancelLabel="Cancel Run"
+          startOverDialogOpen={startOverDialogOpen}
+          startOverLabel={startRunMutation.isPending ? 'Starting over...' : 'Start Over'}
           onCancelConfirm={() => undefined}
           onCancelDialogOpenChange={setCancelDialogOpen}
-          onRetry={() => undefined}
-          retryLabel="Retry"
+          onRetry={() => setRetryDialogOpen(true)}
+          onStartOverConfirm={handleStartOverConfirm}
+          onStartOverDialogOpenChange={setStartOverDialogOpen}
         />
       </section>
     )
@@ -1128,6 +1378,12 @@ export function RunMonitorPage() {
 
       {runStatus ? (
         <div className="space-y-6">
+          <OverallProgressCard
+            currentStageId={runStatus.current_stage}
+            overallProgressPct={overallProgressPct}
+            runState={runStatus.state}
+          />
+
           {activeStage ? <ActiveStageSummaryCard stage={activeStage} /> : null}
 
           {showTerritoryReviewPaused ? (
@@ -1137,33 +1393,21 @@ export function RunMonitorPage() {
           ) : null}
 
           {runStatus.state === 'failed' ? (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-5">
-              <p className="text-sm font-semibold text-destructive">
-                {failedStage ? `Stage ${failedStage.stage_id} failed` : 'Run failed'}
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Review the error below and retry to continue from the last failed checkpoint.
-              </p>
-              <Textarea
-                className="mt-3 min-h-24 font-mono text-xs"
-                readOnly
-                value={failureDetailText}
+            <div className="space-y-3">
+              <RunErrorPanel
+                detailText={runErrorDetailText}
+                failedStageId={failedStage?.stage_id ?? null}
+                summary={failureSummaryText}
               />
               {canRetry || retryMutation.isPending ? (
-                <div className="mt-4">
-                  <Button
-                    disabled={retryMutation.isPending}
-                    onClick={handleRetry}
-                    type="button"
-                    variant="secondary"
-                  >
-                    {retryMutation.isPending
-                      ? 'Retrying...'
-                      : failedStage
-                        ? `Retry from Stage ${failedStage.stage_id}`
-                        : 'Retry'}
-                  </Button>
-                </div>
+                <Button
+                  disabled={retryMutation.isPending}
+                  onClick={() => setRetryDialogOpen(true)}
+                  type="button"
+                  variant="secondary"
+                >
+                  {retryMutation.isPending ? 'Retrying...' : retryLabel}
+                </Button>
               ) : null}
             </div>
           ) : null}
@@ -1208,7 +1452,7 @@ export function RunMonitorPage() {
                         <StageCard
                           failedMessage={
                             row.stage.status === 'failed'
-                              ? getFailedStageMessage(row.stage, runErrorDetail)
+                              ? getFailedStageMessage(row.stage, runErrorSummary)
                               : null
                           }
                           nowMs={nowMs}
@@ -1227,20 +1471,28 @@ export function RunMonitorPage() {
       <RunActionBar
         backHref={`/projects/${projectId}/versions/${versionId}`}
         canCancel={canCancel && !cancelMutation.isPending}
+        canStartOver={canStartOver}
         showRetry={canRetry || retryMutation.isPending}
         retryDisabled={retryMutation.isPending}
         cancelDialogOpen={cancelDialogOpen}
         cancelLabel={cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
+        startOverDialogOpen={startOverDialogOpen}
+        startOverLabel={startRunMutation.isPending ? 'Starting over...' : 'Start Over'}
         onCancelConfirm={handleCancelConfirm}
         onCancelDialogOpenChange={setCancelDialogOpen}
-        onRetry={handleRetry}
-        retryLabel={
-          retryMutation.isPending
-            ? 'Retrying...'
-            : failedStage
-              ? `Retry from Stage ${failedStage.stage_id}`
-              : 'Retry'
-        }
+        onRetry={() => setRetryDialogOpen(true)}
+        onStartOverConfirm={handleStartOverConfirm}
+        onStartOverDialogOpenChange={setStartOverDialogOpen}
+        retryLabel={retryMutation.isPending ? 'Retrying...' : retryLabel}
+      />
+
+      <RetryRunDialog
+        isPending={retryMutation.isPending}
+        onConfirm={handleRetryConfirm}
+        onOpenChange={setRetryDialogOpen}
+        open={retryDialogOpen}
+        retryLabel={retryLabel}
+        retryStage={retryFromStage}
       />
 
     </section>
@@ -1250,25 +1502,35 @@ export function RunMonitorPage() {
 function RunActionBar({
   backHref,
   canCancel,
+  canStartOver,
   showRetry,
   retryDisabled,
+  retryLabel,
   cancelDialogOpen,
   cancelLabel,
+  startOverDialogOpen,
+  startOverLabel,
   onCancelConfirm,
   onCancelDialogOpenChange,
   onRetry,
-  retryLabel,
+  onStartOverConfirm,
+  onStartOverDialogOpenChange,
 }: {
   backHref: string
   canCancel: boolean
+  canStartOver: boolean
   showRetry: boolean
   retryDisabled: boolean
+  retryLabel: string
   cancelDialogOpen: boolean
   cancelLabel: string
+  startOverDialogOpen: boolean
+  startOverLabel: string
   onCancelConfirm: () => void
   onCancelDialogOpenChange: (open: boolean) => void
   onRetry: () => void
-  retryLabel: string
+  onStartOverConfirm: () => void
+  onStartOverDialogOpenChange: (open: boolean) => void
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur">
@@ -1306,6 +1568,38 @@ function RunActionBar({
               {retryLabel}
             </Button>
           ) : null}
+
+          <Dialog onOpenChange={onStartOverDialogOpenChange} open={startOverDialogOpen}>
+            <Button
+              disabled={!canStartOver}
+              onClick={() => onStartOverDialogOpenChange(true)}
+              type="button"
+              variant="outline"
+            >
+              {startOverLabel}
+            </Button>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Start over with a new run?</DialogTitle>
+                <DialogDescription>
+                  This starts a fresh run for the current version using the existing run creation
+                  flow.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  onClick={() => onStartOverDialogOpenChange(false)}
+                  type="button"
+                  variant="outline"
+                >
+                  Cancel
+                </Button>
+                <Button onClick={onStartOverConfirm} type="button">
+                  {startOverLabel}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <Button asChild type="button" variant="link">

@@ -20,6 +20,8 @@ export interface GateDefinition {
   run_state: Extract<RunState, 'territory_review' | 'generation_review'>
 }
 
+export const DEEP_CLEARANCE_RETRY_FROM_STAGE = 9 as const
+
 export const STAGE_METADATA: readonly StageMetadata[] = [
   { stage_id: 0, label: 'Research Snapshot', phase: 'phase_1' },
   { stage_id: 1, label: 'Territory Card Generation', phase: 'phase_1' },
