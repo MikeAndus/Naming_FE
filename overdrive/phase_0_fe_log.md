@@ -1530,3 +1530,66 @@
 - Out-of-order events: guarded by `checked_at` comparisons (best effort) per sub-key/per social platform.
 - Dropped/malformed `name_clearance_update` events: ignored without crashing run monitor state handling.
 - Unknown `name_id` in cache: ignored safely.
+
+## 2026-02-20 08:50 GMT - Phase 3 deep clearance UI/UX + trigger wiring on Generation Review/Results
+
+### Files changed
+- `frontend/src/app/router.tsx`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/features/names/components/DeepClearanceActionBar.tsx`
+- `frontend/src/features/names/components/DeepClearanceConfirmDialog.tsx`
+- `frontend/src/features/names/components/NamesTable.tsx`
+- `frontend/src/features/names/components/NameDetailDrawer.tsx`
+- `frontend/src/features/names/components/DeepClearanceBadges.tsx`
+- `frontend/src/features/names/deep-clearance.ts`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/features/runs/useRunProgress.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### Summary of shipped UX
+- Results route (`/projects/:projectId/versions/:versionId/results`) now uses the same Generation Review surface and supports version states `generation_review`, `phase_3_running`, and `complete`.
+- Added generation-review post-trigger routing behavior:
+  - if version state becomes `phase_3_running` while on `/generation-review` -> redirect to Run Monitor
+  - if version state becomes `complete` while on `/generation-review` -> redirect to `/results`
+- Deep clearance action bar/dialog updates:
+  - primary CTA remains `Run deep clearance on N names`
+  - complete-state disabled tooltip implemented exactly:
+    `Deep clearance complete. Fork this version to run clearance on additional names.`
+  - confirm dialog pending-state guards preserved (cannot dismiss while pending)
+- Table clearance rendering updates:
+  - if `deep_clearance` present -> render deep-clearance badges
+  - else -> render fast clearance badge
+  - while `phase_3_running`, selected rows without deep clearance show subtle in-progress indicator
+- Name Detail Drawer updates:
+  - added `Deep Clearance` section with `Trademark`, `Domain`, and `Socials` subsections
+  - if not selected -> shows muted `Not selected for deep clearance`
+  - if selected and subsection missing -> shows subsection skeleton loaders
+  - subsection content updates from cached candidate state
+
+### API integration note
+- Deep clearance trigger remains wired to backend endpoint:
+  - `POST /api/v1/runs/{run_id}/deep-clearance`
+- Success path continues navigating to Run Monitor.
+
+### SSE/cache integration note
+- Existing `name_clearance_update` SSE handling in `useRunProgress` now patches names cache for matching `name_id` by replacing candidate `deep_clearance` with the payload snapshot (no refetch required).
+- Generation Review page now mounts `useRunProgress` for the active run so drawer/table deep-clearance sections can update live from SSE-delivered cache patches.
+
+### Validation
+- Executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+
+### Manual test checklist
+- `generation_review` state:
+  - verify action bar enabled only with selected names and confirm dialog submit starts deep clearance + navigates to Run Monitor.
+- `phase_3_running` state:
+  - verify selected rows without deep clearance show in-progress indicator.
+  - verify drawer deep-clearance subsections show skeletons for missing sections and fill in as cache updates arrive.
+- `complete` state:
+  - verify trigger CTA disabled with exact complete-state tooltip text.
+  - verify `/results` renders list/drawer surface and `/generation-review` redirects to `/results`.
+
+### Notes
+- Interactive browser/SSE runtime verification is still required locally against a live backend stream in this environment.

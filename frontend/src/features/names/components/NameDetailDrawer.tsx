@@ -4,6 +4,7 @@ import { Star } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Sheet,
   SheetContent,
@@ -12,11 +13,20 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { DeepClearanceBadges } from '@/features/names/components/DeepClearanceBadges'
+import {
+  getDeepClearanceBadgeClassName,
+  getSocialStatusLabel,
+  getSocialsAggregateStatus,
+  getDomainStatusLabel,
+  getTrademarkStatusLabel,
+  hasDeepClearanceData,
+} from '@/features/names/deep-clearance'
 import { FastClearanceBadge } from '@/features/names/components/FastClearanceBadge'
 import { usePatchNameCandidateMutation } from '@/features/names/queries'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { toast } from '@/hooks/use-toast'
-import { type NameCandidateResponse, getErrorMessage } from '@/lib/api'
+import { type NameCandidateResponse, type SocialClearanceMap, getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 interface NameDetailDrawerProps {
@@ -119,6 +129,46 @@ function getNotesSaveStatusCopy(isSaving: boolean, saveState: NoteSaveState): st
   return 'Idle'
 }
 
+function DeepClearanceSectionSkeleton({ label }: { label: string }) {
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <Skeleton className="h-4 w-36" />
+      <Skeleton className="h-4 w-28" />
+      <Skeleton className="h-4 w-44" />
+    </div>
+  )
+}
+
+function SocialClearanceRows({ socials }: { socials: SocialClearanceMap }) {
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-medium text-muted-foreground">Socials</p>
+        <Badge className={getDeepClearanceBadgeClassName(getSocialsAggregateStatus(socials))}>
+          {getSocialStatusLabel(getSocialsAggregateStatus(socials))}
+        </Badge>
+      </div>
+
+      <div className="space-y-2 text-xs">
+        {Object.entries(socials).map(([platform, result]) => (
+          <div className="rounded-sm bg-muted/40 p-2" key={platform}>
+            <p className="font-medium">{platform}</p>
+            <p className="text-muted-foreground">Status: {result.status}</p>
+            <p className="text-muted-foreground">Handle: {result.handle}</p>
+            <p className="text-muted-foreground">
+              Checked: {formatTimestamp(result.checked_at) ?? '—'}
+            </p>
+            {result.reason ? (
+              <p className="text-muted-foreground">Reason: {result.reason}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function NameDetailDrawerContent({
   candidate,
   open,
@@ -210,6 +260,14 @@ function NameDetailDrawerContent({
 
   const fastClearance = getFastClearanceDetails(candidate.fast_clearance)
   const rawResponse = formatRawResponse(fastClearance.rawResponse)
+  const deepClearance = candidate.deep_clearance
+  const hasDeepClearance = hasDeepClearanceData(deepClearance)
+  const showDeepClearanceSkeletons = candidate.selected_for_clearance && !hasDeepClearance
+  const missingTrademark = candidate.selected_for_clearance && !deepClearance?.trademark
+  const missingDomain = candidate.selected_for_clearance && !deepClearance?.domain
+  const missingSocials =
+    candidate.selected_for_clearance &&
+    (!deepClearance?.socials || Object.keys(deepClearance.socials).length === 0)
 
   return (
     <>
@@ -283,12 +341,16 @@ function NameDetailDrawerContent({
             Clearance detail
           </h3>
           <div className="space-y-3 rounded-md border p-3">
-            <div className="flex items-center gap-2">
-              <FastClearanceBadge fastClearance={candidate.fast_clearance} />
-              {fastClearance.checkedAt ? (
-                <p className="text-xs text-muted-foreground">Checked: {fastClearance.checkedAt}</p>
-              ) : null}
-            </div>
+            {hasDeepClearance && deepClearance ? (
+              <DeepClearanceBadges deepClearance={deepClearance} />
+            ) : (
+              <div className="flex items-center gap-2">
+                <FastClearanceBadge fastClearance={candidate.fast_clearance} />
+                {fastClearance.checkedAt ? (
+                  <p className="text-xs text-muted-foreground">Checked: {fastClearance.checkedAt}</p>
+                ) : null}
+              </div>
+            )}
 
             {fastClearance.status === 'unknown' ? (
               <p className="text-xs text-muted-foreground">
@@ -307,6 +369,84 @@ function NameDetailDrawerContent({
               </div>
             ) : null}
           </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Deep Clearance
+          </h3>
+
+          {!candidate.selected_for_clearance ? (
+            <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+              Not selected for deep clearance
+            </div>
+          ) : showDeepClearanceSkeletons ? (
+            <div className="space-y-2">
+              <DeepClearanceSectionSkeleton label="Trademark" />
+              <DeepClearanceSectionSkeleton label="Domain" />
+              <DeepClearanceSectionSkeleton label="Socials" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {deepClearance?.trademark ? (
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">Trademark</p>
+                    <Badge className={getDeepClearanceBadgeClassName(deepClearance.trademark.status)}>
+                      {getTrademarkStatusLabel(deepClearance.trademark.status)}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Checked: {formatTimestamp(deepClearance.trademark.checked_at) ?? '—'}
+                  </p>
+                  {deepClearance.trademark.reason ? (
+                    <p className="text-xs text-muted-foreground">
+                      Reason: {deepClearance.trademark.reason}
+                    </p>
+                  ) : null}
+                  {deepClearance.trademark.similar_marks.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                      {deepClearance.trademark.similar_marks.slice(0, 4).map((mark, index) => (
+                        <li key={`${mark.mark_name}-${index}`}>{mark.mark_name}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : missingTrademark ? (
+                <DeepClearanceSectionSkeleton label="Trademark" />
+              ) : null}
+
+              {deepClearance?.domain ? (
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">Domain</p>
+                    <Badge className={getDeepClearanceBadgeClassName(deepClearance.domain.status)}>
+                      {getDomainStatusLabel(deepClearance.domain.status)}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Domain: {deepClearance.domain.domain_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Checked: {formatTimestamp(deepClearance.domain.checked_at) ?? '—'}
+                  </p>
+                  {deepClearance.domain.reason ? (
+                    <p className="text-xs text-muted-foreground">
+                      Reason: {deepClearance.domain.reason}
+                    </p>
+                  ) : null}
+                </div>
+              ) : missingDomain ? (
+                <DeepClearanceSectionSkeleton label="Domain" />
+              ) : null}
+
+              {deepClearance?.socials && Object.keys(deepClearance.socials).length > 0 ? (
+                <SocialClearanceRows socials={deepClearance.socials} />
+              ) : missingSocials ? (
+                <DeepClearanceSectionSkeleton label="Socials" />
+              ) : null}
+            </div>
+          )}
         </section>
 
         <section className="space-y-2">

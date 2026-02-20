@@ -7,7 +7,6 @@ import { ProjectsPage } from '@/routes/ProjectsPage'
 import { RunMonitorPage } from '@/routes/RunMonitorPage'
 import { TerritoryReviewPage } from '@/routes/TerritoryReviewPage'
 import { VersionBuilderPage } from '@/routes/VersionBuilderPage'
-import { VersionPlaceholderPage } from '@/routes/VersionPlaceholderPage'
 
 export const router = createBrowserRouter([
   {
@@ -47,7 +46,7 @@ export const router = createBrowserRouter([
           },
           {
             path: ':projectId/versions/:versionId/results',
-            element: <VersionPlaceholderPage phase={10} title="Results" />,
+            element: <GenerationReviewPage />,
           },
         ],
       },

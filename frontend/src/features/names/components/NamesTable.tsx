@@ -1,4 +1,4 @@
-import { Star } from 'lucide-react'
+import { Loader2, Star } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,10 +6,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { NameCandidateResponse } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { DeepClearanceBadges } from '@/features/names/components/DeepClearanceBadges'
 import { FastClearanceBadge } from '@/features/names/components/FastClearanceBadge'
+import { hasDeepClearanceData } from '@/features/names/deep-clearance'
 
 interface NamesTableProps {
   items: NameCandidateResponse[]
+  isPhase3Running: boolean
   isLoading: boolean
   isError: boolean
   errorMessage: string
@@ -101,6 +104,7 @@ function ErrorState({ errorMessage, onRetry }: { errorMessage: string; onRetry: 
 
 export function NamesTable({
   items,
+  isPhase3Running,
   isLoading,
   isError,
   errorMessage,
@@ -163,6 +167,9 @@ export function NamesTable({
       <tbody>
         {items.map((candidate) => {
           const compositeScore = getCompositeScore(candidate)
+          const hasDeepClearance = hasDeepClearanceData(candidate.deep_clearance)
+          const showClearanceInProgress =
+            isPhase3Running && candidate.selected_for_clearance && !hasDeepClearance
 
           return (
             <tr
@@ -253,7 +260,20 @@ export function NamesTable({
               </td>
 
               <td className="px-2 py-2">
-                <FastClearanceBadge fastClearance={candidate.fast_clearance} />
+                <div className="space-y-1">
+                  {hasDeepClearance && candidate.deep_clearance ? (
+                    <DeepClearanceBadges deepClearance={candidate.deep_clearance} />
+                  ) : (
+                    <FastClearanceBadge fastClearance={candidate.fast_clearance} />
+                  )}
+
+                  {showClearanceInProgress ? (
+                    <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Deep clearance in progress
+                    </p>
+                  ) : null}
+                </div>
               </td>
             </tr>
           )

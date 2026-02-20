@@ -15,6 +15,7 @@ interface DeepClearanceConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedNames: NameCandidateResponse[]
+  isTerminalComplete: boolean
   isRunStateEligible: boolean
   isPending: boolean
   onConfirm: () => void
@@ -24,12 +25,14 @@ export function DeepClearanceConfirmDialog({
   open,
   onOpenChange,
   selectedNames,
+  isTerminalComplete,
   isRunStateEligible,
   isPending,
   onConfirm,
 }: DeepClearanceConfirmDialogProps) {
   const selectedCount = selectedNames.length
-  const isConfirmDisabled = selectedCount === 0 || !isRunStateEligible || isPending
+  const isConfirmDisabled =
+    selectedCount === 0 || !isRunStateEligible || isTerminalComplete || isPending
 
   return (
     <Dialog

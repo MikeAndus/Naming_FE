@@ -1,6 +1,6 @@
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +34,7 @@ import {
 } from '@/features/names/queries'
 import { projectDetailQueryKey, useProjectDetailQuery } from '@/features/projects/queries'
 import { runStatusQueryKey, useRunStatusQuery } from '@/features/runs/queries'
+import { useRunProgress } from '@/features/runs/useRunProgress'
 import {
   projectVersionsQueryKey,
   useVersionDetailQuery,
@@ -87,6 +88,12 @@ const MID_RUN_STATES = new Set<RunState>([
   'stage_6',
   'stage_7',
   'stage_8',
+])
+const PHASE_3_RUN_STATES = new Set<RunState>(['stage_9', 'stage_10', 'stage_11'])
+const RESULTS_ELIGIBLE_VERSION_STATES = new Set([
+  'generation_review',
+  'phase_3_running',
+  'complete',
 ])
 
 function getUnavailableCta(
@@ -186,9 +193,11 @@ const EMPTY_NAMES: NameCandidateResponse[] = []
 
 export function GenerationReviewPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
+  const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isDesktop = useIsDesktop()
+  const isResultsRoute = location.pathname.endsWith('/results')
 
   const resolvedProjectId = projectId && isDesktop ? projectId : undefined
   const resolvedVersionId = projectId && versionId && isDesktop ? versionId : undefined
@@ -200,17 +209,23 @@ export function GenerationReviewPage() {
   const versionBuilderHref = projectId && versionId ? `/projects/${projectId}/versions/${versionId}` : '/projects'
   const runMonitorHref = `${versionBuilderHref}/run`
   const territoryReviewHref = `${versionBuilderHref}/territory-review`
+  const resultsHref = `${versionBuilderHref}/results`
 
-  const runState = runStatusQuery.data?.state
-  const unavailableCta = runState
-    ? getUnavailableCta(runState, {
+  const runProgress = useRunProgress({
+    runId: isDesktop && runId ? runId : null,
+    enabled: Boolean(isDesktop && runId),
+  })
+  const resolvedRunState = runProgress.status?.state ?? runStatusQuery.data?.state
+
+  const unavailableCta = resolvedRunState
+    ? getUnavailableCta(resolvedRunState, {
         runMonitorHref,
         territoryReviewHref,
       })
     : null
 
   const shouldLoadNames = Boolean(
-    isDesktop && runId && runState && !unavailableCta && projectId && versionId,
+    isDesktop && runId && resolvedRunState && !unavailableCta && projectId && versionId,
   )
   const namesQuery = useRunNamesQuery(
     shouldLoadNames ? runId : undefined,
@@ -327,11 +342,13 @@ export function GenerationReviewPage() {
     { label: 'Dashboard', to: '/projects' },
     { label: projectLabel, to: projectId ? `/projects/${projectId}` : '/projects' },
     { label: versionLabel, to: versionBuilderHref },
-    { label: 'Generation review' },
+    { label: isResultsRoute ? 'Results' : 'Generation review' },
   ]
 
   const isNamesLoading = namesQuery.isLoading || (namesQuery.isFetching && !namesQuery.data)
-  const isDeepClearanceRunStateEligible = runStatusQuery.data?.state === 'generation_review'
+  const isDeepClearanceRunStateEligible = resolvedRunState === 'generation_review'
+  const isVersionPhase3Running = versionQuery.data?.state === 'phase_3_running'
+  const isVersionComplete = versionQuery.data?.state === 'complete'
 
   const handleToggleShortlisted = (candidate: NameCandidateResponse) => {
     if (!runId) {
@@ -384,7 +401,7 @@ export function GenerationReviewPage() {
   }
 
   const handleRunDeepClearance = () => {
-    if (!runId || !isDeepClearanceRunStateEligible) {
+    if (!runId || !isDeepClearanceRunStateEligible || isVersionComplete) {
       return
     }
 
@@ -547,6 +564,42 @@ export function GenerationReviewPage() {
     )
   }
 
+  if (
+    !isResultsRoute &&
+    (versionQuery.data.state === 'phase_3_running' ||
+      (resolvedRunState ? PHASE_3_RUN_STATES.has(resolvedRunState) : false))
+  ) {
+    return <Navigate replace to={runMonitorHref} />
+  }
+
+  if (
+    !isResultsRoute &&
+    (versionQuery.data.state === 'complete' || resolvedRunState === 'complete')
+  ) {
+    return <Navigate replace to={resultsHref} />
+  }
+
+  if (isResultsRoute && !RESULTS_ELIGIBLE_VERSION_STATES.has(versionQuery.data.state)) {
+    return (
+      <section className="space-y-4">
+        <Breadcrumbs items={breadcrumbs} />
+        <Card>
+          <CardHeader>
+            <CardTitle>Results unavailable</CardTitle>
+            <CardDescription>
+              Results open after generation review begins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to={versionBuilderHref}>Go to Version Builder</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
+    )
+  }
+
   if (unavailableCta) {
     return (
       <section className="space-y-4">
@@ -556,7 +609,7 @@ export function GenerationReviewPage() {
             <CardTitle>Generation Review unavailable</CardTitle>
             <CardDescription>{unavailableCta.description}</CardDescription>
             <div className="pt-1">
-              <Badge variant="outline">Run state: {formatStateLabel(runStatusQuery.data.state)}</Badge>
+              <Badge variant="outline">Run state: {formatStateLabel(resolvedRunState ?? 'unknown')}</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -581,8 +634,8 @@ export function GenerationReviewPage() {
                   <Badge className={getVersionStateBadgeClass(versionQuery.data.state)}>
                     {formatStateLabel(versionQuery.data.state)}
                   </Badge>
-                  <Badge className={getRunStateBadgeClass(runStatusQuery.data.state)}>
-                    {formatStateLabel(runStatusQuery.data.state)}
+                  <Badge className={getRunStateBadgeClass(resolvedRunState ?? 'queued')}>
+                    {formatStateLabel(resolvedRunState ?? 'queued')}
                   </Badge>
                 </div>
               </div>
@@ -617,6 +670,7 @@ export function GenerationReviewPage() {
           hasActiveFilters={hasActiveFilters}
           isError={namesQuery.isError}
           isLoading={isNamesLoading}
+          isPhase3Running={isVersionPhase3Running}
           items={filteredNames}
           onClearFilters={() => {
             setFilters(createDefaultNamesFilters())
@@ -638,6 +692,7 @@ export function GenerationReviewPage() {
 
       <DeepClearanceActionBar
         isPending={deepClearanceMutation.isPending}
+        isTerminalComplete={isVersionComplete}
         isRunStateEligible={isDeepClearanceRunStateEligible}
         onRunDeepClearance={() => {
           setIsDeepClearanceDialogOpen(true)
@@ -649,6 +704,7 @@ export function GenerationReviewPage() {
 
       <DeepClearanceConfirmDialog
         isPending={deepClearanceMutation.isPending}
+        isTerminalComplete={isVersionComplete}
         isRunStateEligible={isDeepClearanceRunStateEligible}
         onConfirm={handleRunDeepClearance}
         onOpenChange={setIsDeepClearanceDialogOpen}

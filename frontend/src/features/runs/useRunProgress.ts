@@ -405,7 +405,6 @@ export function useRunProgress({
             updateNameCandidateDeepClearance(queryClient, {
               runId: parsedEvent.data.run_id,
               nameId: parsedEvent.data.name_id,
-              clearanceType: parsedEvent.data.clearance_type,
               deepClearance: parsedEvent.data.deep_clearance,
             })
             return
