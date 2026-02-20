@@ -60,6 +60,18 @@ function isDateOrNull(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
+function parseStageArtifacts(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value === 'undefined') {
+    return null
+  }
+
+  if (isRecord(value)) {
+    return value
+  }
+
+  return null
+}
+
 function toStageId(value: unknown, fieldName: string): number {
   if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
     return value
@@ -112,6 +124,7 @@ function parseStageCheckpointResponse(value: unknown): StageCheckpointResponse {
     status: value.status,
     progress_pct: value.progress_pct,
     summary: value.summary,
+    artifacts: parseStageArtifacts(value.artifacts),
     started_at: value.started_at,
     completed_at: value.completed_at,
   }

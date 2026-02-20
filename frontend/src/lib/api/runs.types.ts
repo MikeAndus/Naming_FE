@@ -47,6 +47,7 @@ export interface StageCheckpointResponse {
   status: StageCheckpointStatus
   progress_pct: number
   summary: string | null
+  artifacts?: Record<string, unknown> | null
   started_at: string | null
   completed_at: string | null
 }

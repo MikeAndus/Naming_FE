@@ -30,9 +30,9 @@ export const STAGE_METADATA: readonly StageMetadata[] = [
   { stage_id: 6, label: 'Linguistic Filtering', phase: 'phase_2' },
   { stage_id: 7, label: 'Quality Scoring', phase: 'phase_2' },
   { stage_id: 8, label: 'Generation Pack Assembly', phase: 'phase_2' },
-  { stage_id: 9, label: 'Trademark Deep Check', phase: 'phase_3' },
-  { stage_id: 10, label: 'Domain + Social Sweep', phase: 'phase_3' },
-  { stage_id: 11, label: 'Final Recommendation', phase: 'phase_3' },
+  { stage_id: 9, label: 'Trademark Deep Clearance', phase: 'phase_3' },
+  { stage_id: 10, label: '.com Domain Availability', phase: 'phase_3' },
+  { stage_id: 11, label: 'Social Handle Checks', phase: 'phase_3' },
 ] as const
 
 export const PHASE_HEADERS: readonly PhaseHeader[] = [

@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, Circle, CircleX, Loader2 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -142,6 +149,177 @@ function clampProgress(progressPct: number): number {
   return Math.min(100, Math.max(0, Math.round(progressPct)))
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
+function getNonNegativeInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.round(value)
+  }
+
+  return null
+}
+
+function isPhase3Stage(stageId: number): boolean {
+  return stageId >= 9 && stageId <= 11
+}
+
+function getStageCheckedTotal(stage: StageRow): { checked: number | null; total: number | null } {
+  if (!isPhase3Stage(stage.stage_id)) {
+    return {
+      checked: null,
+      total: null,
+    }
+  }
+
+  const artifacts = asRecord(stage.artifacts)
+  if (!artifacts) {
+    return {
+      checked: null,
+      total: null,
+    }
+  }
+
+  return {
+    checked: getNonNegativeInteger(artifacts.checked),
+    total: getNonNegativeInteger(artifacts.total),
+  }
+}
+
+function selectProgressPct(
+  stage: StageRow,
+  checked: number | null,
+  total: number | null,
+): number {
+  const reportedProgress = clampProgress(stage.progress_pct)
+  if (checked === null || total === null || total <= 0) {
+    return reportedProgress
+  }
+
+  const computedProgress = clampProgress((checked / total) * 100)
+  const progressDrift = Math.abs(reportedProgress - computedProgress)
+  if (
+    progressDrift > 35 ||
+    (reportedProgress === 0 && checked > 0) ||
+    (reportedProgress === 100 && checked < total)
+  ) {
+    return computedProgress
+  }
+
+  return reportedProgress
+}
+
+function formatStatusBreakdown(
+  statuses: Record<string, unknown> | null,
+  order: Array<{ key: string; label: string }>,
+): string | null {
+  if (!statuses) {
+    return null
+  }
+
+  const parts = order
+    .map(({ key, label }) => {
+      const count = getNonNegativeInteger(statuses[key])
+      if (count === null) {
+        return null
+      }
+
+      return `${label} ${count}`
+    })
+    .filter((part): part is string => Boolean(part))
+
+  if (parts.length === 0) {
+    return null
+  }
+
+  return parts.join(' • ')
+}
+
+function getPerPlatformSummary(stage: StageRow): string | null {
+  const artifacts = asRecord(stage.artifacts)
+  const rawPerPlatformSummary = asRecord(artifacts?.per_platform_summary)
+  if (!rawPerPlatformSummary) {
+    return null
+  }
+
+  const platformSummaries = Object.entries(rawPerPlatformSummary)
+    .map(([platform, rawSummary]) => {
+      const summary = asRecord(rawSummary)
+      if (!summary) {
+        return null
+      }
+
+      const clear = getNonNegativeInteger(summary.clear)
+      const busy = getNonNegativeInteger(summary.busy)
+      const mixed = getNonNegativeInteger(summary.mixed)
+      const unknown = getNonNegativeInteger(summary.unknown)
+      const parts = [
+        clear !== null ? `clear ${clear}` : null,
+        busy !== null ? `busy ${busy}` : null,
+        mixed !== null ? `mixed ${mixed}` : null,
+        unknown !== null ? `unknown ${unknown}` : null,
+      ].filter((part): part is string => Boolean(part))
+
+      if (parts.length === 0) {
+        return null
+      }
+
+      return `${platform}: ${parts.join(', ')}`
+    })
+    .filter((entry): entry is string => Boolean(entry))
+
+  if (platformSummaries.length === 0) {
+    return null
+  }
+
+  return platformSummaries.join('; ')
+}
+
+function getStageCompletionBreakdown(stage: StageRow): string | null {
+  const artifacts = asRecord(stage.artifacts)
+  if (!artifacts) {
+    return null
+  }
+
+  if (stage.stage_id === 9) {
+    return formatStatusBreakdown(asRecord(artifacts.statuses), [
+      { key: 'green', label: 'Green' },
+      { key: 'amber', label: 'Amber' },
+      { key: 'red', label: 'Red' },
+      { key: 'unknown', label: 'Unknown' },
+    ])
+  }
+
+  if (stage.stage_id === 10) {
+    return formatStatusBreakdown(asRecord(artifacts.statuses), [
+      { key: 'available', label: 'Available' },
+      { key: 'taken', label: 'Taken' },
+      { key: 'unknown', label: 'Unknown' },
+    ])
+  }
+
+  if (stage.stage_id === 11) {
+    return getPerPlatformSummary(stage)
+  }
+
+  return null
+}
+
+function getStageCompletionSummary(stage: StageRow): string | null {
+  const summary = stage.summary?.trim() || null
+  const breakdown = getStageCompletionBreakdown(stage)
+  if (summary && breakdown) {
+    return `${summary} • ${breakdown}`
+  }
+
+  return summary ?? breakdown
+}
+
 function getActiveStageFallbackSummary(stage: StageRow): string {
   if (stage.stage_id === 0) {
     return 'Research snapshot is in progress.'
@@ -155,7 +333,41 @@ function getActiveStageFallbackSummary(stage: StageRow): string {
   if (stage.stage_id === 3) {
     return 'Cleaning and deduplicating candidates...'
   }
+  if (stage.stage_id === 9) {
+    return 'Running trademark deep clearance...'
+  }
+  if (stage.stage_id === 10) {
+    return 'Checking .com availability...'
+  }
+  if (stage.stage_id === 11) {
+    return 'Checking social handles...'
+  }
   return 'Stage is in progress.'
+}
+
+function getActiveStageLine(stage: StageRow): string {
+  if (stage.status === 'complete') {
+    return 'Completed.'
+  }
+
+  if (stage.status === 'failed') {
+    return 'Stage failed. Review details below.'
+  }
+
+  return stage.summary?.trim() || getActiveStageFallbackSummary(stage)
+}
+
+function getStageIdFromRunState(state: RunState | undefined): number | null {
+  if (!state || !state.startsWith('stage_')) {
+    return null
+  }
+
+  const parsed = Number(state.slice('stage_'.length))
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null
+  }
+
+  return parsed
 }
 
 function parseErrorDetail(errorDetail: string | null): string | null {
@@ -300,13 +512,24 @@ function StageCard({
   const isRunning = stage.status === 'running'
   const isComplete = stage.status === 'complete'
   const isFailed = stage.status === 'failed'
-  const normalizedProgress = clampProgress(stage.progress_pct)
+  const isPhase3 = isPhase3Stage(stage.stage_id)
+  const { checked, total } = getStageCheckedTotal(stage)
+  const checkedTotalLabel =
+    isPhase3 && checked !== null && total !== null
+      ? `${checked}/${total} complete`
+      : isPhase3
+        ? '—/— complete'
+        : null
+  const normalizedProgress = selectProgressPct(stage, checked, total)
   const stageDuration = getDurationMs(
     stage.started_at,
     stage.status === 'running' ? null : stage.completed_at,
     nowMs,
   )
-  const summary = stage.summary?.trim() ?? ''
+  const summary =
+    stage.status === 'complete'
+      ? getStageCompletionSummary(stage)
+      : (stage.summary?.trim() ?? null)
 
   return (
     <motion.article
@@ -338,12 +561,18 @@ function StageCard({
         <div className="mt-3 space-y-1">
           <Progress value={normalizedProgress} />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <p>{normalizedProgress}%</p>
-            <p>Elapsed: {formatDuration(stageDuration)}</p>
+            <p>{checkedTotalLabel ?? `${normalizedProgress}%`}</p>
+            <p>
+              {checkedTotalLabel ? `${normalizedProgress}% • ` : ''}
+              Elapsed: {formatDuration(stageDuration)}
+            </p>
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-xs text-muted-foreground">Elapsed: {formatDuration(stageDuration)}</p>
+        <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+          <p>{checkedTotalLabel ?? 'Pending'}</p>
+          <p>Elapsed: {formatDuration(stageDuration)}</p>
+        </div>
       )}
 
       {(isRunning || isComplete || isFailed) && summary ? (
@@ -410,20 +639,49 @@ function GateCard({
 }
 
 function ActiveStageSummaryCard({ stage }: { stage: StageRow }) {
-  const summary = stage.summary?.trim() || getActiveStageFallbackSummary(stage)
-  const progressPct = clampProgress(stage.progress_pct)
+  const isPhase3 = isPhase3Stage(stage.stage_id)
+  const { checked, total } = getStageCheckedTotal(stage)
+  const checkedTotalLabel =
+    isPhase3 && checked !== null && total !== null
+      ? `${checked}/${total} complete`
+      : isPhase3
+        ? '—/— complete'
+        : null
+  const progressPct = selectProgressPct(stage, checked, total)
+  const statusLabel =
+    stage.status === 'running'
+      ? 'In progress'
+      : stage.status === 'complete'
+        ? 'Completed'
+        : stage.status === 'failed'
+          ? 'Failed'
+          : 'Pending'
+  const completionSummary = stage.status === 'complete' ? getStageCompletionSummary(stage) : null
+  const activeStageLine = getActiveStageLine(stage)
 
   return (
-    <div className="rounded-lg border bg-background p-4">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">Active stage summary</p>
-      <div className="mt-1 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold">
-          Stage {stage.stage_id}: {stage.label}
-        </p>
-        <p className="text-sm font-medium text-muted-foreground">{progressPct}%</p>
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">{summary}</p>
-    </div>
+    <Card>
+      <CardHeader className="space-y-2">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Active stage summary</p>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-sm">
+            Stage {stage.stage_id}: {stage.label}
+          </CardTitle>
+          <Badge variant="outline">{statusLabel}</Badge>
+        </div>
+        <CardDescription>{activeStageLine}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Progress value={progressPct} />
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <p>{checkedTotalLabel ?? `${progressPct}%`}</p>
+          <p>{checkedTotalLabel ? `${progressPct}%` : 'Live progress'}</p>
+        </div>
+        {completionSummary ? (
+          <p className="text-sm text-muted-foreground">{completionSummary}</p>
+        ) : null}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -472,9 +730,11 @@ function RunTimelineSkeleton() {
 
 export function RunMonitorPage() {
   const { projectId, versionId } = useParams<{ projectId: string; versionId: string }>()
+  const navigate = useNavigate()
   const isDesktop = useIsDesktop()
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const hasRedirectedToResultsRef = useRef(false)
 
   const projectQuery = useProjectDetailQuery(projectId)
   const versionQuery = useVersionDetailQuery(versionId)
@@ -508,6 +768,7 @@ export function RunMonitorPage() {
   }, [runStatus?.started_at, runStatus?.state])
 
   const stageRows = useMemo(() => buildStageRows(runStatus?.stages), [runStatus?.stages])
+  const stage11 = stageRows[11] ?? null
 
   const failedStage = useMemo(() => {
     for (let index = stageRows.length - 1; index >= 0; index -= 1) {
@@ -524,6 +785,11 @@ export function RunMonitorPage() {
       return runningStage
     }
 
+    const stageFromRunState = getStageIdFromRunState(runStatus?.state)
+    if (stageFromRunState !== null) {
+      return stageRows[stageFromRunState] ?? null
+    }
+
     if (runStatus?.state === 'territory_review') {
       return stageRows[1] ?? null
     }
@@ -534,6 +800,34 @@ export function RunMonitorPage() {
 
     return null
   })()
+
+  useEffect(() => {
+    if (!projectId || !versionId) {
+      return
+    }
+
+    if (runStatus?.state === 'complete') {
+      if (hasRedirectedToResultsRef.current) {
+        return
+      }
+
+      hasRedirectedToResultsRef.current = true
+      navigate(`/projects/${projectId}/versions/${versionId}/results`, { replace: true })
+      return
+    }
+
+    if (stage11?.status === 'complete' && runStatus?.state !== 'failed') {
+      if (hasRedirectedToResultsRef.current) {
+        return
+      }
+
+      hasRedirectedToResultsRef.current = true
+      navigate(`/projects/${projectId}/versions/${versionId}/results`, { replace: true })
+      return
+    }
+
+    hasRedirectedToResultsRef.current = false
+  }, [navigate, projectId, runStatus?.state, stage11?.status, versionId])
 
   const timelineByPhase = useMemo(() => {
     const rowsByPhase = new Map<string, TimelineRow[]>()

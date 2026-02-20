@@ -1635,3 +1635,48 @@
   - trademark present + domain missing: trademark filter can match; domain filter cannot match that row.
   - domain present + trademark missing: domain filter can match; trademark filter cannot match that row.
 - `unknown` filter values are matched only when backend status is explicitly `unknown`, not when deep-clearance fields are absent.
+
+## 2026-02-20 10:02 GMT - Run Monitor Phase 3 timeline detail + active stage summary + results redirect
+
+### Files changed
+- `frontend/src/routes/RunMonitorPage.tsx`
+- `frontend/src/features/runs/stageMetadata.ts`
+- `frontend/src/lib/api/runs.types.ts`
+- `frontend/src/lib/api/runs.ts`
+- `overdrive/phase_0_fe_log.md`
+
+### Summary
+- Updated Phase 3 stage metadata labels for stages 9-11:
+  - `Trademark Deep Clearance`
+  - `.com Domain Availability`
+  - `Social Handle Checks`
+- Extended run stage checkpoint parsing/types to preserve optional `artifacts` payloads on stage checkpoints for monitor rendering.
+- Enhanced Run Monitor stage rows for Phase 3 (stages 9-11) to render:
+  - `X/N complete` from checkpoint artifacts (`checked`/`total`, fallback `—/— complete`)
+  - progress bar with phase-3-aware percent selection (prefers `progress_pct` and falls back to computed ratio when inconsistent)
+  - elapsed time
+  - completion summary text combining checkpoint `summary` with artifact breakdowns:
+    - stage 9: `Green/Amber/Red/Unknown`
+    - stage 10: `Available/Taken/Unknown`
+    - stage 11: per-platform `clear/busy/mixed/unknown` rollups
+- Replaced the previous active-stage summary block with a Card-based summary region that shows:
+  - stage label + status badge
+  - progress bar
+  - `X/N complete` (for phase 3) + percent
+  - concise active-stage line (including phase-3-specific copy)
+  - completion summary when active stage is complete
+- Added one-shot auto-navigation in Run Monitor to:
+  - `/projects/:projectId/versions/:versionId/results`
+  when run reaches completion (`run.state === 'complete'`) or stage 11 checkpoint reaches complete.
+
+### Verification
+- Executed:
+  - `cd frontend && npm run lint` (pass)
+  - `cd frontend && npm run typecheck` (pass)
+  - `cd frontend && npm run build` (pass)
+- Manual runtime validation steps to execute locally with backend:
+  1) Start a run and advance into `stage_9`/`stage_10`/`stage_11`; verify each stage row shows `X/N complete`, progress bar updates, and elapsed time.
+  2) On stage 9 completion, verify summary shows status counts (`green/amber/red/unknown`) with checkpoint summary context.
+  3) On stage 10 completion, verify summary shows domain status counts (`available/taken/unknown`).
+  4) On stage 11 completion, verify summary shows per-platform rollups and page auto-redirects to `/projects/<projectId>/versions/<versionId>/results`.
+  5) During active Phase 3 stages, verify the Active stage summary card updates label, progress, and activity copy live.
