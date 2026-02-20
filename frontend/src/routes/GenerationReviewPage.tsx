@@ -1,8 +1,12 @@
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { AlertTriangle, RefreshCcw, WifiOff } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Breadcrumbs } from '@/components/app/Breadcrumbs'
+import { EmptyState } from '@/components/app/EmptyState'
+import { InlineBanner } from '@/components/app/InlineBanner'
+import { SkeletonSection } from '@/components/app/SkeletonSection'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,14 +23,16 @@ import {
   NamesFilterBar,
 } from '@/features/names/components/NamesFilterBar'
 import { NamesTable } from '@/features/names/components/NamesTable'
-import { hasDeepClearanceData } from '@/features/names/deep-clearance'
+import { getSocialsAggregateStatus } from '@/features/names/deep-clearance'
 import {
+  buildRunNamesQueryParams,
   createDefaultNamesFilters,
-  filterNameCandidates,
   getNamesFilterScoreRange,
   isNamesFilterStateActive,
+  sortNameCandidatesForDisplay,
   sortTerritoryOptions,
   type NamesFilterState,
+  type NamesSortBy,
 } from '@/features/names/filters'
 import {
   usePatchNameCandidateMutation,
@@ -41,7 +47,7 @@ import {
   useVersionDetailQuery,
   versionDetailQueryKey,
 } from '@/features/versions/queries'
-import { type NameCandidateResponse, getErrorMessage, type RunState } from '@/lib/api'
+import { getErrorMessage, type NameCandidateResponse, type RunState } from '@/lib/api'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { toast } from '@/hooks/use-toast'
 
@@ -108,7 +114,7 @@ function getUnavailableCta(
     return {
       buttonLabel: 'Go to Run Monitor',
       href: paths.runMonitorHref,
-      description: 'Generation Review becomes available after the run reaches generation review.',
+      description: 'Results become available after the run reaches generation review.',
     }
   }
 
@@ -116,7 +122,7 @@ function getUnavailableCta(
     return {
       buttonLabel: 'Review Territory Cards',
       href: paths.territoryReviewHref,
-      description: 'Finish Territory Review to continue this run toward Generation Review.',
+      description: 'Finish Territory Review to continue this run toward Results.',
     }
   }
 
@@ -165,29 +171,30 @@ function getRunStateBadgeClass(state: string): string {
   return 'bg-amber-100 text-amber-800 hover:bg-amber-100'
 }
 
-function getCompositeScore(candidate: NameCandidateResponse): number {
-  const value = candidate.scores.composite
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return Number.NEGATIVE_INFINITY
+function getDeepTrademarkStatus(candidate: NameCandidateResponse, isPhase3Running: boolean): string {
+  const value = candidate.deep_clearance?.trademark?.status
+  if (value) {
+    return value
   }
 
-  return value
+  return isPhase3Running && candidate.selected_for_clearance ? 'pending' : 'unknown'
 }
 
-function compareNameCandidates(left: NameCandidateResponse, right: NameCandidateResponse): number {
-  const leftRank = left.rank ?? Number.POSITIVE_INFINITY
-  const rightRank = right.rank ?? Number.POSITIVE_INFINITY
-  if (leftRank !== rightRank) {
-    return leftRank - rightRank
+function getDomainStatus(candidate: NameCandidateResponse, isPhase3Running: boolean): string {
+  const value = candidate.deep_clearance?.domain?.status
+  if (value) {
+    return value
   }
 
-  const leftScore = getCompositeScore(left)
-  const rightScore = getCompositeScore(right)
-  if (leftScore !== rightScore) {
-    return rightScore - leftScore
+  return isPhase3Running && candidate.selected_for_clearance ? 'pending' : 'unknown'
+}
+
+function getSocialStatus(candidate: NameCandidateResponse, isPhase3Running: boolean): string {
+  if (candidate.deep_clearance?.socials) {
+    return getSocialsAggregateStatus(candidate.deep_clearance.socials)
   }
 
-  return left.name_text.localeCompare(right.name_text)
+  return isPhase3Running && candidate.selected_for_clearance ? 'pending' : 'unknown'
 }
 
 const EMPTY_NAMES: NameCandidateResponse[] = []
@@ -228,52 +235,80 @@ export function GenerationReviewPage() {
       })
     : null
 
-  const shouldLoadNames = Boolean(
-    isDesktop && runId && resolvedRunState && !unavailableCta && projectId && versionId,
-  )
-  const namesQuery = useRunNamesQuery(
-    shouldLoadNames ? runId : undefined,
-    {
-      limit: 100,
-      offset: 0,
-      sort_by: 'rank',
-      sort_dir: 'asc',
-      selected_for_final: true,
-    },
-    {
-      enabled: shouldLoadNames,
-    },
-  )
-
   const [filters, setFilters] = useState<NamesFilterState>(() => createDefaultNamesFilters())
   const [selectedNameId, setSelectedNameId] = useState<string | null>(null)
   const [isDeepClearanceDialogOpen, setIsDeepClearanceDialogOpen] = useState(false)
   const lastDrawerTriggerRef = useRef<HTMLElement | null>(null)
   const patchNameCandidateMutation = usePatchNameCandidateMutation()
   const deepClearanceMutation = useRunDeepClearanceMutation()
-  const debouncedSearch = useDebouncedValue(filters.search, 300)
 
-  const allNames = namesQuery.data?.items ?? EMPTY_NAMES
+  const debouncedSearch = useDebouncedValue(filters.search, 300)
+  const effectiveFilters = useMemo(
+    () => ({
+      ...filters,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, filters],
+  )
+  const scoreRange = useMemo(() => getNamesFilterScoreRange(effectiveFilters), [effectiveFilters])
+  const filteredQueryParams = useMemo(
+    () => buildRunNamesQueryParams(effectiveFilters, scoreRange),
+    [effectiveFilters, scoreRange],
+  )
+
+  const shouldLoadNames = Boolean(
+    isDesktop && runId && resolvedRunState && !unavailableCta && projectId && versionId,
+  )
+  const isPhase3Running = Boolean(resolvedRunState && PHASE_3_RUN_STATES.has(resolvedRunState))
+  const useNamesPollingFallback =
+    isPhase3Running && runProgress.connectionState !== 'live'
+
+  const allNamesQuery = useRunNamesQuery(
+    shouldLoadNames ? runId : undefined,
+    {
+      limit: 100,
+      offset: 0,
+      selected_for_final: true,
+      sort_by: 'score',
+      sort_dir: 'desc',
+    },
+    {
+      enabled: shouldLoadNames,
+      refetchInterval: useNamesPollingFallback ? 5000 : false,
+    },
+  )
+
+  const filteredNamesQuery = useRunNamesQuery(
+    shouldLoadNames ? runId : undefined,
+    {
+      limit: 100,
+      offset: 0,
+      selected_for_final: true,
+      ...filteredQueryParams,
+    },
+    {
+      enabled: shouldLoadNames,
+      refetchInterval: useNamesPollingFallback ? 5000 : false,
+    },
+  )
+
+  const allNames = allNamesQuery.data?.items ?? EMPTY_NAMES
+  const filteredNames = filteredNamesQuery.data?.items ?? EMPTY_NAMES
+  const displayedNames = useMemo(
+    () => sortNameCandidatesForDisplay(filteredNames, filters),
+    [filteredNames, filters],
+  )
+
   const selectedNameCandidate = useMemo(
     () => allNames.find((candidate) => candidate.id === selectedNameId) ?? null,
     [allNames, selectedNameId],
   )
   const territoryOptions = useMemo(() => sortTerritoryOptions(allNames), [allNames])
-  const hasAnyDeepClearance = useMemo(
-    () => allNames.some((candidate) => hasDeepClearanceData(candidate.deep_clearance)),
-    [allNames],
-  )
 
-  const scoreRange = useMemo(() => getNamesFilterScoreRange(filters), [filters])
-
-  const filteredNames = useMemo(() => {
-    return filterNameCandidates(allNames, filters, debouncedSearch, scoreRange).sort(compareNameCandidates)
-  }, [allNames, debouncedSearch, filters, scoreRange])
-
-  const totalCount = namesQuery.data?.total ?? allNames.length
-  const showingCount = filteredNames.length
-  const starredCount = filteredNames.filter((candidate) => candidate.shortlisted).length
-  const selectedVisibleCount = filteredNames.filter(
+  const totalCount = filteredNamesQuery.data?.total ?? displayedNames.length
+  const showingCount = displayedNames.length
+  const starredCount = displayedNames.filter((candidate) => candidate.shortlisted).length
+  const selectedVisibleCount = displayedNames.filter(
     (candidate) => candidate.selected_for_clearance,
   ).length
   const selectedForClearanceNames = useMemo(
@@ -299,10 +334,48 @@ export function GenerationReviewPage() {
     { label: isResultsRoute ? 'Results' : 'Generation review' },
   ]
 
-  const isNamesLoading = namesQuery.isLoading || (namesQuery.isFetching && !namesQuery.data)
+  const isNamesLoading =
+    filteredNamesQuery.isLoading || (filteredNamesQuery.isFetching && !filteredNamesQuery.data)
   const isDeepClearanceRunStateEligible = resolvedRunState === 'generation_review'
-  const isVersionPhase3Running = versionQuery.data?.state === 'phase_3_running'
   const isVersionComplete = versionQuery.data?.state === 'complete'
+
+  const warnings = useMemo(() => {
+    let unknownCount = 0
+    let pendingCount = 0
+
+    for (const candidate of displayedNames) {
+      const statuses = [
+        getDeepTrademarkStatus(candidate, isPhase3Running),
+        getDomainStatus(candidate, isPhase3Running),
+        getSocialStatus(candidate, isPhase3Running),
+      ]
+
+      statuses.forEach((status) => {
+        if (status === 'pending') {
+          pendingCount += 1
+        } else if (status === 'unknown') {
+          unknownCount += 1
+        }
+      })
+    }
+
+    const runProgressData = runProgress.status?.progress
+    let diversityShortfallMessage: string | null = null
+    if (runProgressData && typeof runProgressData === 'object') {
+      const diversityShortfall = runProgressData['diversity_shortfall']
+      if (typeof diversityShortfall === 'string' && diversityShortfall.trim().length > 0) {
+        diversityShortfallMessage = diversityShortfall
+      } else if (diversityShortfall === true) {
+        diversityShortfallMessage = 'Diversity shortfall detected in generated names.'
+      }
+    }
+
+    return {
+      pendingCount,
+      unknownCount,
+      diversityShortfallMessage,
+    }
+  }, [displayedNames, isPhase3Running, runProgress.status?.progress])
 
   const handleToggleShortlisted = (candidate: NameCandidateResponse) => {
     if (!runId) {
@@ -410,7 +483,7 @@ export function GenerationReviewPage() {
   if (!projectId || !versionId) {
     return (
       <section className="space-y-4">
-        <h1 className="text-xl font-semibold">Generation Review unavailable</h1>
+        <h1 className="text-xl font-semibold">Results unavailable</h1>
         <p className="text-sm text-muted-foreground">
           A project and version id are required to open this page.
         </p>
@@ -437,11 +510,7 @@ export function GenerationReviewPage() {
     return (
       <section className="space-y-4">
         <Breadcrumbs items={breadcrumbs} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Loading Generation Review</CardTitle>
-          </CardHeader>
-        </Card>
+        <SkeletonSection rowCount={6} rows={[{ className: 'h-8 w-full' }]} />
       </section>
     )
   }
@@ -471,7 +540,7 @@ export function GenerationReviewPage() {
         <Breadcrumbs items={breadcrumbs} />
         <Card>
           <CardHeader>
-            <CardTitle>Generation Review unavailable</CardTitle>
+            <CardTitle>Results unavailable</CardTitle>
             <CardDescription>
               No run exists for this version yet. Start from Version Builder first.
             </CardDescription>
@@ -490,11 +559,7 @@ export function GenerationReviewPage() {
     return (
       <section className="space-y-4">
         <Breadcrumbs items={breadcrumbs} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Loading run state</CardTitle>
-          </CardHeader>
-        </Card>
+        <SkeletonSection rowCount={6} rows={[{ className: 'h-8 w-full' }]} />
       </section>
     )
   }
@@ -560,7 +625,7 @@ export function GenerationReviewPage() {
         <Breadcrumbs items={breadcrumbs} />
         <Card>
           <CardHeader>
-            <CardTitle>Generation Review unavailable</CardTitle>
+            <CardTitle>Results unavailable</CardTitle>
             <CardDescription>{unavailableCta.description}</CardDescription>
             <div className="pt-1">
               <Badge variant="outline">Run state: {formatStateLabel(resolvedRunState ?? 'unknown')}</Badge>
@@ -619,35 +684,127 @@ export function GenerationReviewPage() {
             setFilters(createDefaultNamesFilters())
           }}
           selectedCount={selectedVisibleCount}
-          showDeepClearanceFilters={hasAnyDeepClearance}
           showingCount={showingCount}
           starredCount={starredCount}
           territoryOptions={territoryOptions}
           totalResults={totalCount}
         />
+
+        {allNamesQuery.data && allNamesQuery.data.total < 90 ? (
+          <InlineBanner
+            description={`Fewer than 90 names returned (${allNamesQuery.data.total}). Results quality may be constrained.`}
+            icon={<AlertTriangle className="h-4 w-4" />}
+            title="Name volume shortfall"
+            variant="warning"
+          />
+        ) : null}
+
+        {warnings.diversityShortfallMessage ? (
+          <InlineBanner
+            description={warnings.diversityShortfallMessage}
+            icon={<AlertTriangle className="h-4 w-4" />}
+            title="Diversity shortfall"
+            variant="warning"
+          />
+        ) : null}
+
+        {warnings.pendingCount > 0 || warnings.unknownCount > 0 ? (
+          <InlineBanner
+            description={`${warnings.pendingCount} pending and ${warnings.unknownCount} unknown deep-clearance statuses in the current grid.`}
+            icon={<AlertTriangle className="h-4 w-4" />}
+            title="Clearance coverage"
+            variant={warnings.pendingCount > 0 ? 'info' : 'warning'}
+          />
+        ) : null}
+
+        {useNamesPollingFallback ? (
+          <InlineBanner
+            description="Realtime stream degraded. Polling every 5s until the SSE connection recovers."
+            icon={<WifiOff className="h-4 w-4" />}
+            title="Reconnecting"
+            variant="warning"
+          />
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-background">
-        <NamesTable
-          errorMessage={getErrorMessage(namesQuery.error, 'Please try again.')}
-          hasActiveFilters={hasActiveFilters}
-          isError={namesQuery.isError}
-          isLoading={isNamesLoading}
-          isPhase3Running={isVersionPhase3Running}
-          items={filteredNames}
-          onClearFilters={() => {
-            setFilters(createDefaultNamesFilters())
-          }}
-          onRowClick={(candidate, triggerElement) => {
-            lastDrawerTriggerRef.current = triggerElement
-            setSelectedNameId(candidate.id)
-          }}
-          onRetry={() => {
-            void namesQuery.refetch()
-          }}
-          onToggleSelectedForClearance={handleToggleSelectedForClearance}
-          onToggleShortlisted={handleToggleShortlisted}
-        />
+        {isNamesLoading ? (
+          <div className="p-4">
+            <SkeletonSection
+              rowCount={12}
+              rows={Array.from({ length: 12 }, () => ({ className: 'h-8 w-full' }))}
+              showHeader={false}
+            />
+          </div>
+        ) : filteredNamesQuery.isError ? (
+          <div className="p-4">
+            <InlineBanner
+              action={
+                <Button
+                  onClick={() => {
+                    void filteredNamesQuery.refetch()
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Retry
+                </Button>
+              }
+              description={getErrorMessage(filteredNamesQuery.error, 'Please try again.')}
+              title="Couldn’t load Results names"
+              variant="destructive"
+            />
+          </div>
+        ) : displayedNames.length === 0 ? (
+          <div className="p-4">
+            <EmptyState
+              cta={
+                <Button
+                  disabled={!hasActiveFilters}
+                  onClick={() => {
+                    setFilters(createDefaultNamesFilters())
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  Reset filters
+                </Button>
+              }
+              description="No names match the current filter combination."
+              title="No matching names"
+            />
+          </div>
+        ) : (
+          <NamesTable
+            isPhase3Running={isPhase3Running}
+            items={displayedNames}
+            onRowClick={(candidate, triggerElement) => {
+              lastDrawerTriggerRef.current = triggerElement
+              setSelectedNameId(candidate.id)
+            }}
+            onSortChange={(nextSortBy: NamesSortBy) => {
+              setFilters((current) => {
+                if (current.sortBy === nextSortBy) {
+                  return {
+                    ...current,
+                    sortDir: current.sortDir === 'asc' ? 'desc' : 'asc',
+                  }
+                }
+
+                return {
+                  ...current,
+                  sortBy: nextSortBy,
+                  sortDir: nextSortBy === 'name_text' ? 'asc' : 'desc',
+                }
+              })
+            }}
+            onToggleSelectedForClearance={handleToggleSelectedForClearance}
+            onToggleShortlisted={handleToggleShortlisted}
+            sortBy={filters.sortBy}
+            sortDir={filters.sortDir}
+          />
+        )}
       </div>
 
       <p className="shrink-0 text-xs text-muted-foreground">

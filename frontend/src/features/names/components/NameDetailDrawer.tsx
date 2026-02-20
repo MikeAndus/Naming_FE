@@ -218,7 +218,9 @@ function toDetailDeepClearance(
               ? 'A'
               : deep.trademark.status === 'red'
                 ? 'R'
-                : 'Unknown',
+                : deep.trademark.status === 'pending'
+                  ? 'Pending'
+                  : 'Unknown',
         checked_at: deep.trademark.checked_at,
         reason: deep.trademark.reason ?? null,
         similar_marks: deep.trademark.similar_marks.map(toTrademarkSimilarMarkRow),
@@ -233,7 +235,9 @@ function toDetailDeepClearance(
             ? 'Available'
             : deep.domain.status === 'taken'
               ? 'Taken'
-              : 'Unknown',
+              : deep.domain.status === 'pending'
+                ? 'Pending'
+                : 'Unknown',
         domain_name: deep.domain.domain_name,
         checked_at: deep.domain.checked_at,
         reason: deep.domain.reason ?? null,
@@ -253,6 +257,9 @@ function toDetailDeepClearance(
           if (aggregate === 'mixed') {
             return 'Mixed'
           }
+          if (aggregate === 'pending') {
+            return 'Pending'
+          }
           return 'Unknown'
         })(),
         platforms: Object.entries(deep.socials).map(([platform, value]) => ({
@@ -264,7 +271,9 @@ function toDetailDeepClearance(
                 ? 'Busy'
                 : value.status === 'mixed'
                   ? 'Mixed'
-                  : 'Unknown',
+                  : value.status === 'pending'
+                    ? 'Pending'
+                    : 'Unknown',
           conflicting_handle: null,
           handle: value.handle,
           checked_at: value.checked_at,
@@ -357,6 +366,8 @@ function getSocialBadgeStatus(
         normalizedStatus = 'busy'
       } else if (platformResult.status === 'Mixed') {
         normalizedStatus = 'mixed'
+      } else if (platformResult.status === 'Pending') {
+        normalizedStatus = 'pending'
       }
 
       accumulator[String(platformResult.platform)] = {

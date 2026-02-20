@@ -1,24 +1,20 @@
-import { Loader2, Star } from 'lucide-react'
+import { ArrowDownUp, Star } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Skeleton } from '@/components/ui/skeleton'
+import { StatusBadge } from '@/components/app/StatusBadge'
 import type { NameCandidateResponse } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { DeepClearanceBadges } from '@/features/names/components/DeepClearanceBadges'
 import { FastClearanceBadge } from '@/features/names/components/FastClearanceBadge'
-import { hasDeepClearanceData } from '@/features/names/deep-clearance'
+import { getSocialsAggregateStatus } from '@/features/names/deep-clearance'
+import type { NamesSortBy, NamesSortDirection } from '@/features/names/filters'
 
 interface NamesTableProps {
   items: NameCandidateResponse[]
   isPhase3Running: boolean
-  isLoading: boolean
-  isError: boolean
-  errorMessage: string
-  hasActiveFilters: boolean
-  onRetry: () => void
-  onClearFilters: () => void
+  sortBy: NamesSortBy
+  sortDir: NamesSortDirection
+  onSortChange: (sortBy: NamesSortBy) => void
   onRowClick?: (
     candidate: NameCandidateResponse,
     triggerElement: HTMLTableRowElement,
@@ -44,125 +40,214 @@ function getCompositeScore(candidate: NameCandidateResponse): number | null {
   return value
 }
 
-function TableSkeleton() {
-  return (
-    <div className="space-y-2 p-3">
-      {Array.from({ length: 12 }).map((_, index) => (
-        <div className="grid grid-cols-[32px_32px_64px_1fr_100px_140px_90px_80px_1fr_110px] gap-3" key={`name-skeleton-row-${index}`}>
-          <Skeleton className="h-8 w-8" />
-          <Skeleton className="h-8 w-8" />
-          <Skeleton className="h-8 w-14" />
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-8 w-20" />
-          <Skeleton className="h-8 w-28" />
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="h-8 w-12" />
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-8 w-20" />
-        </div>
-      ))}
-    </div>
-  )
+function getDeepTrademarkStatus(candidate: NameCandidateResponse, isPhase3Running: boolean): string {
+  const value = candidate.deep_clearance?.trademark?.status
+  if (value) {
+    return value
+  }
+
+  if (isPhase3Running && candidate.selected_for_clearance) {
+    return 'pending'
+  }
+
+  return 'unknown'
 }
 
-function NoResults({
-  hasActiveFilters,
-  onClearFilters,
+function getDomainStatus(candidate: NameCandidateResponse, isPhase3Running: boolean): string {
+  const value = candidate.deep_clearance?.domain?.status
+  if (value) {
+    return value
+  }
+
+  if (isPhase3Running && candidate.selected_for_clearance) {
+    return 'pending'
+  }
+
+  return 'unknown'
+}
+
+function getSocialStatus(candidate: NameCandidateResponse, isPhase3Running: boolean): string {
+  if (candidate.deep_clearance?.socials) {
+    return getSocialsAggregateStatus(candidate.deep_clearance.socials)
+  }
+
+  if (isPhase3Running && candidate.selected_for_clearance) {
+    return 'pending'
+  }
+
+  return 'unknown'
+}
+
+function getDeepTrademarkLabel(status: string): string {
+  if (status === 'green') {
+    return 'G'
+  }
+
+  if (status === 'amber') {
+    return 'A'
+  }
+
+  if (status === 'red') {
+    return 'R'
+  }
+
+  if (status === 'pending') {
+    return 'Pending'
+  }
+
+  return 'Unknown'
+}
+
+function getDomainLabel(status: string): string {
+  if (status === 'available') {
+    return 'Available'
+  }
+
+  if (status === 'taken') {
+    return 'Taken'
+  }
+
+  if (status === 'pending') {
+    return 'Pending'
+  }
+
+  return 'Unknown'
+}
+
+function getSocialLabel(status: string): string {
+  if (status === 'clear') {
+    return 'Clear'
+  }
+
+  if (status === 'busy') {
+    return 'Busy'
+  }
+
+  if (status === 'mixed') {
+    return 'Mixed'
+  }
+
+  if (status === 'pending') {
+    return 'Pending'
+  }
+
+  return 'Unknown'
+}
+
+function SortableHeader({
+  align = 'left',
+  className,
+  isActive,
+  label,
+  onClick,
+  sortDir,
 }: {
-  hasActiveFilters: boolean
-  onClearFilters: () => void
+  align?: 'left' | 'right' | 'center'
+  className?: string
+  isActive: boolean
+  label: string
+  onClick: () => void
+  sortDir: NamesSortDirection
 }) {
   return (
-    <Card className="m-4">
-      <CardHeader>
-        <CardTitle>No names match your filters</CardTitle>
-        <CardDescription>
-          Adjust your filters to widen the list.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button disabled={!hasActiveFilters} onClick={onClearFilters} type="button" variant="outline">
-          Clear all filters
-        </Button>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ErrorState({ errorMessage, onRetry }: { errorMessage: string; onRetry: () => void }) {
-  return (
-    <Card className="m-4 border-destructive/40 bg-destructive/5">
-      <CardHeader>
-        <CardTitle className="text-destructive">Couldn&apos;t load names</CardTitle>
-        <CardDescription>{errorMessage}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button onClick={onRetry} type="button" variant="outline">
-          Retry
-        </Button>
-      </CardContent>
-    </Card>
+    <th
+      className={cn(
+        'px-2 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+        align === 'left' && 'text-left',
+        align === 'right' && 'text-right',
+        align === 'center' && 'text-center',
+        className,
+      )}
+    >
+      <Button
+        className={cn('h-auto gap-1 px-0 py-0 text-xs font-semibold uppercase tracking-wide')}
+        onClick={onClick}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        {label}
+        <ArrowDownUp className="h-3 w-3" />
+        {isActive ? <span className="text-[10px]">{sortDir === 'asc' ? 'Asc' : 'Desc'}</span> : null}
+      </Button>
+    </th>
   )
 }
 
 export function NamesTable({
   items,
   isPhase3Running,
-  isLoading,
-  isError,
-  errorMessage,
-  hasActiveFilters,
-  onRetry,
-  onClearFilters,
+  sortBy,
+  sortDir,
+  onSortChange,
   onRowClick,
   onToggleShortlisted,
   onToggleSelectedForClearance,
 }: NamesTableProps) {
-  if (isLoading) {
-    return <TableSkeleton />
-  }
-
-  if (isError) {
-    return <ErrorState errorMessage={errorMessage} onRetry={onRetry} />
-  }
-
-  if (items.length === 0) {
-    return <NoResults hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
-  }
-
   return (
-    <table className="w-full border-separate border-spacing-0">
-      <thead className="sticky top-0 z-10 bg-background">
+    <table className="min-w-[1700px] w-full border-separate border-spacing-0">
+      <thead className="sticky top-0 z-20 bg-background">
         <tr className="border-b">
-          <th className="w-9 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Star
-          </th>
-          <th className="w-9 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Select
-          </th>
-          <th className="w-14 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Rank
-          </th>
+          <SortableHeader
+            align="left"
+            className="sticky left-0 z-20 bg-background"
+            isActive={sortBy === 'name_text'}
+            label="Name"
+            onClick={() => onSortChange('name_text')}
+            sortDir={sortDir}
+          />
           <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Name
-          </th>
-          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground max-[1100px]:hidden">
             Family
           </th>
-          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground max-[1320px]:hidden">
-            Territory
+          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Territory Card
           </th>
-          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground max-[1180px]:hidden">
+          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Format
           </th>
-          <th className="w-16 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Score
-          </th>
-          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground max-[1500px]:hidden">
+          <SortableHeader
+            align="right"
+            isActive={sortBy === 'score'}
+            label="Score"
+            onClick={() => onSortChange('score')}
+            sortDir={sortDir}
+          />
+          <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Meaning
           </th>
-          <th className="w-24 px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Clearance
+          <SortableHeader
+            align="left"
+            isActive={sortBy === 'fast_clearance'}
+            label="Fast USPTO"
+            onClick={() => onSortChange('fast_clearance')}
+            sortDir={sortDir}
+          />
+          <SortableHeader
+            align="left"
+            isActive={sortBy === 'deep_uspto_status'}
+            label="Deep USPTO"
+            onClick={() => onSortChange('deep_uspto_status')}
+            sortDir={sortDir}
+          />
+          <SortableHeader
+            align="left"
+            isActive={sortBy === 'domain_status'}
+            label="Domain (.com)"
+            onClick={() => onSortChange('domain_status')}
+            sortDir={sortDir}
+          />
+          <SortableHeader
+            align="left"
+            isActive={sortBy === 'social_status'}
+            label="Social"
+            onClick={() => onSortChange('social_status')}
+            sortDir={sortDir}
+          />
+          <th className="w-20 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Shortlisted
+          </th>
+          <th className="w-24 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Selected
           </th>
         </tr>
       </thead>
@@ -170,14 +255,14 @@ export function NamesTable({
       <tbody>
         {items.map((candidate) => {
           const compositeScore = getCompositeScore(candidate)
-          const hasDeepClearance = hasDeepClearanceData(candidate.deep_clearance)
-          const showClearanceInProgress =
-            isPhase3Running && candidate.selected_for_clearance && !hasDeepClearance
+          const deepTrademarkStatus = getDeepTrademarkStatus(candidate, isPhase3Running)
+          const domainStatus = getDomainStatus(candidate, isPhase3Running)
+          const socialStatus = getSocialStatus(candidate, isPhase3Running)
 
           return (
             <tr
               className={cn(
-                'border-b align-top hover:bg-muted/30',
+                'group border-b align-top hover:bg-muted/30',
                 onRowClick
                   ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
                   : '',
@@ -200,6 +285,51 @@ export function NamesTable({
               }}
               tabIndex={onRowClick ? 0 : -1}
             >
+              <td className="sticky left-0 z-10 bg-background px-2 py-2 text-sm font-medium text-foreground group-hover:bg-muted/30">
+                {candidate.name_text}
+              </td>
+
+              <td className="px-2 py-2 text-sm text-muted-foreground">
+                {formatFamilyLabel(candidate.family)}
+              </td>
+
+              <td className="max-w-[260px] px-2 py-2 text-sm text-muted-foreground">
+                <p className="truncate" title={candidate.territory_card_label}>{candidate.territory_card_label}</p>
+              </td>
+
+              <td className="px-2 py-2 text-sm text-muted-foreground">
+                {formatFormatLabel(candidate.format)}
+              </td>
+
+              <td className="px-2 py-2 text-right text-sm text-foreground">
+                {compositeScore === null ? '-' : compositeScore.toFixed(1)}
+              </td>
+
+              <td className="max-w-[280px] px-2 py-2 text-sm text-muted-foreground">
+                <p className="truncate" title={candidate.meaning}>
+                  {candidate.meaning}
+                </p>
+              </td>
+
+              <td className="px-2 py-2">
+                <FastClearanceBadge fastClearance={candidate.fast_clearance} />
+              </td>
+
+              <td className="px-2 py-2">
+                <StatusBadge
+                  labelOverride={getDeepTrademarkLabel(deepTrademarkStatus)}
+                  status={deepTrademarkStatus}
+                />
+              </td>
+
+              <td className="px-2 py-2">
+                <StatusBadge labelOverride={getDomainLabel(domainStatus)} status={domainStatus} />
+              </td>
+
+              <td className="px-2 py-2">
+                <StatusBadge labelOverride={getSocialLabel(socialStatus)} status={socialStatus} />
+              </td>
+
               <td className="px-2 py-2 text-center">
                 <Button
                   className="h-7 w-7"
@@ -246,51 +376,6 @@ export function NamesTable({
                       onToggleSelectedForClearance?.(candidate)
                     }}
                   />
-                </div>
-              </td>
-
-              <td className="px-2 py-2 text-right text-sm text-muted-foreground">
-                {candidate.rank ?? '-'}
-              </td>
-
-              <td className="px-2 py-2 text-sm font-medium text-foreground">{candidate.name_text}</td>
-
-              <td className="px-2 py-2 text-sm text-muted-foreground max-[1100px]:hidden">
-                {formatFamilyLabel(candidate.family)}
-              </td>
-
-              <td className="max-w-[200px] px-2 py-2 text-sm text-muted-foreground max-[1320px]:hidden">
-                <p className="truncate" title={candidate.territory_card_label}>{candidate.territory_card_label}</p>
-              </td>
-
-              <td className="px-2 py-2 text-sm text-muted-foreground max-[1180px]:hidden">
-                {formatFormatLabel(candidate.format)}
-              </td>
-
-              <td className="px-2 py-2 text-right text-sm text-foreground">
-                {compositeScore === null ? '-' : compositeScore.toFixed(1)}
-              </td>
-
-              <td className="max-[1500px]:hidden px-2 py-2 text-sm text-muted-foreground">
-                <p className="max-w-[360px] truncate" title={candidate.meaning}>
-                  {candidate.meaning}
-                </p>
-              </td>
-
-              <td className="px-2 py-2">
-                <div className="space-y-1">
-                  {hasDeepClearance && candidate.deep_clearance ? (
-                    <DeepClearanceBadges deepClearance={candidate.deep_clearance} />
-                  ) : (
-                    <FastClearanceBadge fastClearance={candidate.fast_clearance} />
-                  )}
-
-                  {showClearanceInProgress ? (
-                    <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Deep clearance in progress
-                    </p>
-                  ) : null}
                 </div>
               </td>
             </tr>

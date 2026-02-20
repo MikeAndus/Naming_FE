@@ -22,6 +22,9 @@ export function getTrademarkStatusLabel(status: string): string {
   if (status === 'red') {
     return 'TM Red'
   }
+  if (status === 'pending') {
+    return 'TM Pending'
+  }
   return 'TM Unknown'
 }
 
@@ -32,11 +35,20 @@ export function getDomainStatusLabel(status: string): string {
   if (status === 'taken') {
     return 'Domain Taken'
   }
+  if (status === 'pending') {
+    return 'Domain Pending'
+  }
   return 'Domain Unknown'
 }
 
 function normalizeSocialStatus(status: unknown): SocialClearanceStatus {
-  if (status === 'clear' || status === 'busy' || status === 'mixed' || status === 'unknown') {
+  if (
+    status === 'clear' ||
+    status === 'busy' ||
+    status === 'mixed' ||
+    status === 'unknown' ||
+    status === 'pending'
+  ) {
     return status
   }
 
@@ -58,6 +70,10 @@ export function getSocialsAggregateStatus(
   const uniqueStatuses = new Set(statuses)
   if (uniqueStatuses.size === 1) {
     return statuses[0]
+  }
+
+  if (uniqueStatuses.has('pending')) {
+    return 'mixed'
   }
 
   if (uniqueStatuses.has('clear') && uniqueStatuses.has('busy')) {
@@ -85,6 +101,9 @@ export function getSocialStatusLabel(status: SocialClearanceStatus): string {
   if (status === 'mixed') {
     return 'Social Mixed'
   }
+  if (status === 'pending') {
+    return 'Social Pending'
+  }
   return 'Social Unknown'
 }
 
@@ -99,6 +118,10 @@ export function getDeepClearanceBadgeClassName(status: string): string {
 
   if (status === 'red' || status === 'taken' || status === 'busy') {
     return 'bg-red-100 text-red-700 hover:bg-red-100'
+  }
+
+  if (status === 'pending') {
+    return 'bg-slate-100 text-slate-700 hover:bg-slate-100'
   }
 
   return 'bg-gray-100 text-gray-500 hover:bg-gray-100'

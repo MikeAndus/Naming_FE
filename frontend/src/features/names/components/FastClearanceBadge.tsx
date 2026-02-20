@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { Loader2 } from 'lucide-react'
 import {
   getNormalizedFastClearanceStatus,
   type NormalizedFastClearanceStatus,
@@ -17,6 +18,10 @@ function getFastClearanceLabel(status: NormalizedFastClearanceStatus): string {
     return 'Red'
   }
 
+  if (status === 'pending') {
+    return 'Pending'
+  }
+
   return 'Unknown'
 }
 
@@ -33,6 +38,10 @@ function getFastClearanceClassName(status: NormalizedFastClearanceStatus): strin
     return 'bg-red-100 text-red-700 hover:bg-red-100'
   }
 
+  if (status === 'pending') {
+    return 'bg-slate-100 text-slate-700 hover:bg-slate-100'
+  }
+
   return 'bg-gray-100 text-gray-500 hover:bg-gray-100'
 }
 
@@ -45,6 +54,9 @@ export function FastClearanceBadge({ fastClearance }: FastClearanceBadgeProps) {
 
   return (
     <Badge className={getFastClearanceClassName(normalizedStatus)}>
+      {normalizedStatus === 'pending' ? (
+        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+      ) : null}
       {getFastClearanceLabel(normalizedStatus)}
     </Badge>
   )

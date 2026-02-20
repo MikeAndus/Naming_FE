@@ -11,6 +11,14 @@ import {
   type NormalizedNameCandidateListQueryParams,
 } from '@/lib/api/names.types'
 
+function isDetailEnvelope<TItem>(
+  value: unknown,
+): value is {
+  item: TItem
+} {
+  return value !== null && typeof value === 'object' && 'item' in value
+}
+
 function appendQueryParam(
   query: URLSearchParams,
   key: string,
@@ -70,21 +78,24 @@ export async function getRunNames(
 export const listRunNames = getRunNames
 
 export async function getNameCandidate(nameId: string): Promise<NameCandidateDetailResponse> {
-  const response = await request<NameCandidateDetailEnvelope>(
+  const response = await request<NameCandidateDetailEnvelope | NameCandidateDetailResponse>(
     `/names/${encodeURIComponent(nameId)}`,
     {
       method: 'GET',
     },
   )
 
-  return response.item
+  return isDetailEnvelope<NameCandidateDetailResponse>(response) ? response.item : response
 }
 
 export async function patchNameCandidate(
   nameId: string,
   payload: NameCandidatePatchRequest,
 ): Promise<NameCandidatePatchResponse> {
-  const response = await request<NameCandidatePatchEnvelope, NameCandidatePatchRequest>(
+  const response = await request<
+    NameCandidatePatchEnvelope | NameCandidatePatchResponse,
+    NameCandidatePatchRequest
+  >(
     `/names/${encodeURIComponent(nameId)}`,
     {
       method: 'PATCH',
@@ -92,5 +103,5 @@ export async function patchNameCandidate(
     },
   )
 
-  return response.item
+  return isDetailEnvelope<NameCandidatePatchResponse>(response) ? response.item : response
 }

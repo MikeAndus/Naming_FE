@@ -1945,3 +1945,97 @@ execSummaryQueryKey(runId) => ['run', runId, 'exec-summary']
 - `cd frontend && npm run lint` (pass)
 - `cd frontend && npm run typecheck` (pass)
 - `cd frontend && npm run build` (pass)
+
+## 2026-02-20 20:11 GMT - Results grid extension: deep-clearance columns/filters/sorts + persisted toggles + degraded states
+
+### Summary of changes
+- Extended `GenerationReviewPage` to power the Results-tab grid behavior for `generation_review`, `phase_3_running`, and `complete` states (no parallel page).
+- Upgraded the names grid to 12-column Results layout with sticky `Name` column and horizontal overflow support:
+  1) Name (sticky)
+  2) Family
+  3) Territory Card
+  4) Format
+  5) Score
+  6) Meaning
+  7) Fast USPTO
+  8) Deep USPTO
+  9) Domain (.com)
+  10) Social
+  11) Shortlisted toggle
+  12) Selected-for-clearance toggle
+- Added clearance-column sort headers and interactive sort toggling.
+- Added deep-clearance Pending handling in grid cells (badge + spinner tone) for phase-3 in-flight rows.
+- Extended Results filter bar with deep facets, social platform, shortlist boolean, selected-for-clearance boolean, and sort controls.
+- Kept row click -> `NameDetailDrawer` open behavior with focus return to triggering row on close.
+- Added degraded/edge UI states:
+  - inline banners for name volume shortfall, clearance unknown/pending coverage, stream reconnect/polling fallback, and optional diversity shortfall signal if present in run progress payload
+  - empty state with reset-filters CTA
+  - skeleton loading state for initial names fetch
+- Added phase-3 names polling fallback (`5s`) when SSE connection is not live (`reconnecting`/`polling`) while keeping SSE-driven cache updates for clearance progress.
+- Added robustness for names detail/patch API response shapes:
+  - detail GET now safely handles either raw detail object or `{ item }` envelope
+  - patch now safely handles either raw object or `{ item }` envelope
+  - patch success merges toggled fields into detail cache (does not blindly replace detail payload)
+- Added pending-aware status handling utilities for fast/deep/social display paths.
+
+### Exact API params wired for deep filters/sort
+- Route: `GET /api/v1/runs/{id}/names`
+- Deep/status filter params wired:
+  - `deep_uspto_status`
+  - `domain_status`
+  - `social_status`
+  - `platform` (per-platform social filter/sort selector)
+  - `shortlisted`
+  - `selected_for_clearance`
+- Existing params retained:
+  - `family`
+  - `territory_card_id`
+  - `format`
+  - `score_min`
+  - `score_max`
+  - `clearance_status`
+  - `search`
+  - `selected_for_final`
+  - `limit`
+  - `offset`
+- Sort params wired:
+  - `sort_by` + `sort_dir`
+  - backend-backed values: `score`, `name_text`, `deep_uspto_status`, `domain_status`, `social_status`
+  - `fast_clearance` UI sort is handled client-side; query falls back to backend `sort_by=score`.
+
+### Files changed
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/features/names/components/NamesTable.tsx`
+- `frontend/src/features/names/components/NamesFilterBar.tsx`
+- `frontend/src/features/names/filters.ts`
+- `frontend/src/features/names/components/FastClearanceBadge.tsx`
+- `frontend/src/features/names/fast-clearance.ts`
+- `frontend/src/features/names/deep-clearance.ts`
+- `frontend/src/features/names/components/NameDetailDrawer.tsx`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/lib/api/names.ts`
+- `frontend/src/lib/api/names.types.ts`
+- `frontend/src/lib/api/index.ts`
+
+### Manual checklist performed
+- Static/code-path verification completed for:
+  - deep filter/sort param wiring to runs names query
+  - sort header interactions + sort state propagation
+  - optimistic shortlist and selected-for-clearance toggles in grid + drawer paths
+  - row click -> drawer open and focus return callback wiring
+  - phase-3 reconnect/polling fallback indicator + names refetch fallback trigger
+  - banner/empty/skeleton render branches
+- Browser+backend interactive validation pending locally for:
+  - per-filter request inspection in network panel
+  - phase-3 pending -> final transition timing in live grid cells
+  - end-to-end SSE drop/recovery UX and polling self-heal behavior
+  - keyboard open/close focus-return flow in real browser runtime
+
+### Follow-ups / known limitations
+- Backend `sort_by` does not expose fast-clearance sort directly; fast-clearance column sort is implemented client-side while server query sort remains valid.
+- Social per-platform filtering/sorting uses backend-supported `platform` query param (not `social_platform`).
+
+### Commands run
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

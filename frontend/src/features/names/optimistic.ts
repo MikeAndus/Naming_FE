@@ -306,12 +306,28 @@ export function mergePatchedCandidateIntoNameDetailCache(
   queryClient: QueryClient,
   params: {
     nameId: string
-    candidate: NameCandidateDetailResponse
+    candidate: Pick<
+      NameCandidateDetailResponse,
+      'shortlisted' | 'selected_for_clearance' | 'notes'
+    >
   },
 ): void {
   const { nameId, candidate } = params
 
-  queryClient.setQueryData<NameCandidateDetailResponse>(namesKeys.detail(nameId), candidate)
+  queryClient.setQueryData<NameCandidateDetailResponse>(
+    namesKeys.detail(nameId),
+    (current) => {
+      if (!current) {
+        return current
+      }
+
+      return patchNameDetailCandidate(current, {
+        shortlisted: candidate.shortlisted,
+        selected_for_clearance: candidate.selected_for_clearance,
+        notes: candidate.notes,
+      })
+    },
+  )
 }
 
 export function rollbackRunNamesOptimisticUpdate(

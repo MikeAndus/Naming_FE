@@ -47,7 +47,8 @@ export interface FastClearancePending {
 
 export type FastClearance = FastClearanceSuccess | FastClearanceUnknown | FastClearancePending
 
-export type TrademarkClearanceStatus = 'green' | 'amber' | 'red' | 'unknown'
+export type TrademarkClearanceStatus = 'green' | 'amber' | 'red' | 'unknown' | 'pending'
+export type TrademarkClearanceFilterStatus = Exclude<TrademarkClearanceStatus, 'pending'>
 
 export interface TrademarkSimilarMark {
   mark_name: string
@@ -66,7 +67,8 @@ export interface TrademarkClearance {
   raw_response?: unknown
 }
 
-export type DomainClearanceStatus = 'available' | 'taken' | 'unknown'
+export type DomainClearanceStatus = 'available' | 'taken' | 'unknown' | 'pending'
+export type DomainClearanceFilterStatus = Exclude<DomainClearanceStatus, 'pending'>
 
 export interface DomainClearance {
   status: DomainClearanceStatus
@@ -75,7 +77,8 @@ export interface DomainClearance {
   reason?: string
 }
 
-export type SocialClearanceStatus = 'clear' | 'busy' | 'mixed' | 'unknown'
+export type SocialClearanceStatus = 'clear' | 'busy' | 'mixed' | 'unknown' | 'pending'
+export type SocialClearanceFilterStatus = Exclude<SocialClearanceStatus, 'pending'>
 
 export interface SocialClearance {
   status: SocialClearanceStatus
@@ -145,9 +148,9 @@ export interface NameCandidateListQueryParams {
   score_min?: number
   score_max?: number
   clearance_status?: string
-  deep_uspto_status?: TrademarkClearanceStatus
-  domain_status?: DomainClearanceStatus
-  social_status?: SocialClearanceStatus
+  deep_uspto_status?: TrademarkClearanceFilterStatus
+  domain_status?: DomainClearanceFilterStatus
+  social_status?: SocialClearanceFilterStatus
   platform?: NameCandidateSocialPlatform
   shortlisted?: boolean
   selected_for_clearance?: boolean
@@ -333,5 +336,5 @@ export interface NameCandidateDetailResponse {
 }
 
 export type NameCandidateDetailEnvelope = DetailResponseEnvelope<NameCandidateDetailResponse>
-export type NameCandidatePatchResponse = NameCandidateDetailResponse
+export type NameCandidatePatchResponse = NameCandidateResponse | NameCandidateDetailResponse
 export type NameCandidatePatchEnvelope = DetailResponseEnvelope<NameCandidatePatchResponse>

@@ -1,8 +1,15 @@
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import type { NameFamily, NameFormat } from '@/lib/api'
-import type { NamesFilterState, TerritoryFilterOption } from '@/features/names/filters'
+import type {
+  NameCandidateSocialPlatform,
+  NameFamily,
+  NameFormat,
+} from '@/lib/api'
+import type {
+  NamesFilterState,
+  TerritoryFilterOption,
+} from '@/features/names/filters'
 import { cn } from '@/lib/utils'
 
 interface NamesFilterBarProps {
@@ -11,70 +18,95 @@ interface NamesFilterBarProps {
   onChange: (updater: (current: NamesFilterState) => NamesFilterState) => void
   onClearAll: () => void
   hasActiveFilters: boolean
-  showDeepClearanceFilters: boolean
   totalResults: number
   showingCount: number
   starredCount: number
   selectedCount: number
 }
 
-const FAMILY_OPTIONS: NameFamily[] = ['real', 'hybrid', 'synthetic']
-const FORMAT_OPTIONS: NameFormat[] = ['one_word', 'two_word']
-const CLEARANCE_OPTIONS: NamesFilterState['clearanceStatuses'] = [
+const FAMILY_OPTIONS: Array<NameFamily | 'all'> = ['all', 'real', 'hybrid', 'synthetic']
+const FORMAT_OPTIONS: Array<NameFormat | 'all'> = ['all', 'one_word', 'two_word']
+const FAST_CLEARANCE_OPTIONS: Array<NamesFilterState['clearanceStatus']> = [
+  'all',
   'green',
   'amber',
   'red',
   'unknown',
 ]
-const DEEP_TRADEMARK_OPTIONS: NamesFilterState['deepTrademarkStatuses'] = [
+const DEEP_TRADEMARK_OPTIONS: Array<NamesFilterState['deepTrademarkStatus']> = [
+  'all',
   'green',
   'amber',
   'red',
   'unknown',
 ]
-const DOMAIN_OPTIONS: NamesFilterState['domainStatuses'] = [
+const DOMAIN_OPTIONS: Array<NamesFilterState['domainStatus']> = [
+  'all',
   'available',
   'taken',
   'unknown',
 ]
+const SOCIAL_STATUS_OPTIONS: Array<NamesFilterState['socialStatus']> = [
+  'all',
+  'clear',
+  'busy',
+  'mixed',
+  'unknown',
+]
+const SOCIAL_PLATFORM_OPTIONS: Array<NameCandidateSocialPlatform | 'all'> = [
+  'all',
+  'instagram',
+  'x',
+  'tiktok',
+  'facebook',
+  'linkedin',
+]
+const BOOLEAN_OPTIONS: Array<NamesFilterState['shortlisted']> = ['all', 'yes', 'no']
+const SORT_BY_OPTIONS: Array<{ label: string; value: NamesFilterState['sortBy'] }> = [
+  { label: 'Score', value: 'score' },
+  { label: 'Name', value: 'name_text' },
+  { label: 'Fast USPTO', value: 'fast_clearance' },
+  { label: 'Deep USPTO', value: 'deep_uspto_status' },
+  { label: 'Domain', value: 'domain_status' },
+  { label: 'Social', value: 'social_status' },
+]
 
 function formatLabel(value: string): string {
+  if (value === 'all') {
+    return 'All'
+  }
+
   return value.replaceAll('_', ' ')
 }
 
-function toggleValue<TValue extends string>(
-  values: TValue[],
-  value: TValue,
-): TValue[] {
-  if (values.includes(value)) {
-    return values.filter((item) => item !== value)
-  }
-
-  return [...values, value]
-}
-
-function FilterGroup({
+function SingleSelectGroup<TValue extends string>({
   title,
   options,
-  selectedValues,
-  onToggle,
+  value,
+  onChange,
+  maxWidthClassName,
 }: {
   title: string
-  options: string[]
-  selectedValues: string[]
-  onToggle: (value: string) => void
+  options: TValue[]
+  value: TValue
+  onChange: (value: TValue) => void
+  maxWidthClassName?: string
 }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
-          const isSelected = selectedValues.includes(option)
+          const isSelected = value === option
           return (
             <Button
-              className={cn('h-7 px-2 text-xs font-medium', isSelected && 'border-primary')}
+              className={cn(
+                'h-7 justify-start px-2 text-xs font-medium',
+                isSelected && 'border-primary',
+                maxWidthClassName,
+              )}
               key={option}
-              onClick={() => onToggle(option)}
+              onClick={() => onChange(option)}
               size="sm"
               type="button"
               variant={isSelected ? 'secondary' : 'outline'}
@@ -94,7 +126,6 @@ export function NamesFilterBar({
   onChange,
   onClearAll,
   hasActiveFilters,
-  showDeepClearanceFilters,
   totalResults,
   showingCount,
   starredCount,
@@ -103,7 +134,7 @@ export function NamesFilterBar({
   return (
     <div className="space-y-3 rounded-lg border bg-background p-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-[260px] flex-1 space-y-1.5">
+        <div className="min-w-[280px] flex-1 space-y-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search</p>
           <Input
             onChange={(event) => {
@@ -129,117 +160,142 @@ export function NamesFilterBar({
       </div>
 
       <div className="grid gap-3 2xl:grid-cols-2">
-        <FilterGroup
-          onToggle={(value) => {
+        <SingleSelectGroup
+          onChange={(value) => {
             onChange((current) => ({
               ...current,
-              families: toggleValue(current.families, value as NameFamily),
+              family: value,
             }))
           }}
           options={FAMILY_OPTIONS}
-          selectedValues={filters.families}
           title="Family"
+          value={filters.family}
         />
 
-        <FilterGroup
-          onToggle={(value) => {
+        <SingleSelectGroup
+          onChange={(value) => {
             onChange((current) => ({
               ...current,
-              formats: toggleValue(current.formats, value as NameFormat),
+              format: value,
             }))
           }}
           options={FORMAT_OPTIONS}
-          selectedValues={filters.formats}
           title="Format"
+          value={filters.format}
         />
 
-        <FilterGroup
-          onToggle={(value) => {
+        <SingleSelectGroup
+          onChange={(value) => {
             onChange((current) => ({
               ...current,
-              clearanceStatuses: toggleValue(current.clearanceStatuses, value as 'green' | 'amber' | 'red' | 'unknown'),
+              clearanceStatus: value,
             }))
           }}
-          options={CLEARANCE_OPTIONS}
-          selectedValues={filters.clearanceStatuses}
-          title="Fast clearance"
+          options={FAST_CLEARANCE_OPTIONS}
+          title="Fast USPTO"
+          value={filters.clearanceStatus}
         />
 
-        {showDeepClearanceFilters ? (
-          <FilterGroup
-            onToggle={(value) => {
-              onChange((current) => ({
-                ...current,
-                deepTrademarkStatuses: toggleValue(
-                  current.deepTrademarkStatuses,
-                  value as 'green' | 'amber' | 'red' | 'unknown',
-                ),
-              }))
-            }}
-            options={DEEP_TRADEMARK_OPTIONS}
-            selectedValues={filters.deepTrademarkStatuses}
-            title="Deep trademark"
-          />
-        ) : null}
+        <SingleSelectGroup
+          onChange={(value) => {
+            onChange((current) => ({
+              ...current,
+              deepTrademarkStatus: value,
+            }))
+          }}
+          options={DEEP_TRADEMARK_OPTIONS}
+          title="Deep USPTO"
+          value={filters.deepTrademarkStatus}
+        />
 
-        {showDeepClearanceFilters ? (
-          <FilterGroup
-            onToggle={(value) => {
-              onChange((current) => ({
-                ...current,
-                domainStatuses: toggleValue(current.domainStatuses, value as 'available' | 'taken' | 'unknown'),
-              }))
-            }}
-            options={DOMAIN_OPTIONS}
-            selectedValues={filters.domainStatuses}
-            title="Domain"
-          />
-        ) : null}
+        <SingleSelectGroup
+          onChange={(value) => {
+            onChange((current) => ({
+              ...current,
+              domainStatus: value,
+            }))
+          }}
+          options={DOMAIN_OPTIONS}
+          title="Domain"
+          value={filters.domainStatus}
+        />
 
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Shortlisted</p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              className="h-7 px-2 text-xs font-medium"
-              onClick={() => {
-                onChange((current) => ({
-                  ...current,
-                  shortlistedOnly: false,
-                }))
-              }}
-              size="sm"
-              type="button"
-              variant={!filters.shortlistedOnly ? 'secondary' : 'outline'}
-            >
-              All
-            </Button>
-            <Button
-              className="h-7 px-2 text-xs font-medium"
-              onClick={() => {
-                onChange((current) => ({
-                  ...current,
-                  shortlistedOnly: true,
-                }))
-              }}
-              size="sm"
-              type="button"
-              variant={filters.shortlistedOnly ? 'secondary' : 'outline'}
-            >
-              Starred only
-            </Button>
-          </div>
-        </div>
+        <SingleSelectGroup
+          onChange={(value) => {
+            onChange((current) => ({
+              ...current,
+              socialStatus: value,
+            }))
+          }}
+          options={SOCIAL_STATUS_OPTIONS}
+          title="Social status"
+          value={filters.socialStatus}
+        />
+
+        <SingleSelectGroup
+          onChange={(value) => {
+            onChange((current) => ({
+              ...current,
+              socialPlatform: value,
+            }))
+          }}
+          options={SOCIAL_PLATFORM_OPTIONS}
+          title="Social platform"
+          value={filters.socialPlatform}
+        />
+
+        <SingleSelectGroup
+          onChange={(value) => {
+            onChange((current) => ({
+              ...current,
+              shortlisted: value,
+            }))
+          }}
+          options={BOOLEAN_OPTIONS}
+          title="Shortlisted"
+          value={filters.shortlisted}
+        />
+
+        <SingleSelectGroup
+          onChange={(value) => {
+            onChange((current) => ({
+              ...current,
+              selectedForClearance: value,
+            }))
+          }}
+          options={BOOLEAN_OPTIONS}
+          title="Selected for clearance"
+          value={filters.selectedForClearance}
+        />
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px_360px]">
         <div className="space-y-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Territory</p>
           {territoryOptions.length === 0 ? (
             <p className="text-xs text-muted-foreground">No territories available.</p>
           ) : (
             <div className="flex max-h-[84px] flex-wrap gap-2 overflow-y-auto pr-1">
+              <Button
+                className={cn(
+                  'h-7 justify-start px-2 text-xs font-medium',
+                  filters.territoryId === 'all' && 'border-primary',
+                )}
+                onClick={() => {
+                  onChange((current) => ({
+                    ...current,
+                    territoryId: 'all',
+                  }))
+                }}
+                size="sm"
+                type="button"
+                variant={filters.territoryId === 'all' ? 'secondary' : 'outline'}
+              >
+                All
+              </Button>
+
               {territoryOptions.map((option) => {
-                const isSelected = filters.territories.includes(option.id)
+                const isSelected = filters.territoryId === option.id
                 return (
                   <Button
                     className={cn(
@@ -250,7 +306,7 @@ export function NamesFilterBar({
                     onClick={() => {
                       onChange((current) => ({
                         ...current,
-                        territories: toggleValue(current.territories, option.id),
+                        territoryId: option.id,
                       }))
                     }}
                     size="sm"
@@ -299,6 +355,66 @@ export function NamesFilterBar({
               type="number"
               value={filters.scoreMax}
             />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sort</p>
+          <div className="flex flex-wrap gap-2">
+            {SORT_BY_OPTIONS.map((option) => {
+              const isSelected = filters.sortBy === option.value
+              return (
+                <Button
+                  className={cn(
+                    'h-7 justify-start px-2 text-xs font-medium',
+                    isSelected && 'border-primary',
+                  )}
+                  key={option.value}
+                  onClick={() => {
+                    onChange((current) => ({
+                      ...current,
+                      sortBy: option.value,
+                    }))
+                  }}
+                  size="sm"
+                  type="button"
+                  variant={isSelected ? 'secondary' : 'outline'}
+                >
+                  {option.label}
+                </Button>
+              )
+            })}
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              className="h-7 px-2 text-xs font-medium"
+              onClick={() => {
+                onChange((current) => ({
+                  ...current,
+                  sortDir: 'desc',
+                }))
+              }}
+              size="sm"
+              type="button"
+              variant={filters.sortDir === 'desc' ? 'secondary' : 'outline'}
+            >
+              Desc
+            </Button>
+            <Button
+              className="h-7 px-2 text-xs font-medium"
+              onClick={() => {
+                onChange((current) => ({
+                  ...current,
+                  sortDir: 'asc',
+                }))
+              }}
+              size="sm"
+              type="button"
+              variant={filters.sortDir === 'asc' ? 'secondary' : 'outline'}
+            >
+              Asc
+            </Button>
           </div>
         </div>
       </div>
