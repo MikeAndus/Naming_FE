@@ -275,10 +275,12 @@ export function mergePatchedCandidateAcrossRunCaches(
   queryClient: QueryClient,
   params: {
     runId: string
-    candidate: NameCandidateResponse
+    nameId: string
+    patch: NameCandidatePatchShape
   },
 ): void {
-  const { runId, candidate } = params
+  const { runId, nameId, patch } = params
+  const nowIso = new Date().toISOString()
 
   queryClient
     .getQueriesData<NameCandidateListResponse>({
@@ -289,7 +291,9 @@ export function mergePatchedCandidateAcrossRunCaches(
         return
       }
 
-      const next = updateCandidateInCachedList(current, candidate.id, () => candidate)
+      const next = updateCandidateInCachedList(current, nameId, (candidate) =>
+        patchCandidateInList(candidate, patch, nowIso),
+      )
       if (next === current) {
         return
       }
@@ -302,30 +306,12 @@ export function mergePatchedCandidateIntoNameDetailCache(
   queryClient: QueryClient,
   params: {
     nameId: string
-    candidate: Pick<
-      NameCandidateResponse,
-      'shortlisted' | 'selected_for_clearance' | 'notes'
-    >
+    candidate: NameCandidateDetailResponse
   },
 ): void {
   const { nameId, candidate } = params
 
-  queryClient.setQueryData<NameCandidateDetailResponse>(
-    namesKeys.detail(nameId),
-    (current) => {
-      if (!current) {
-        return current
-      }
-
-      const next = patchNameDetailCandidate(current, {
-        shortlisted: candidate.shortlisted,
-        selected_for_clearance: candidate.selected_for_clearance,
-        notes: candidate.notes,
-      })
-
-      return next
-    },
-  )
+  queryClient.setQueryData<NameCandidateDetailResponse>(namesKeys.detail(nameId), candidate)
 }
 
 export function rollbackRunNamesOptimisticUpdate(

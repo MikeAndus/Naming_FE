@@ -1887,3 +1887,61 @@ execSummaryQueryKey(runId) => ['run', runId, 'exec-summary']
   1) Open `/projects/<projectId>/versions/<versionId>/runs/<runId>/executive-summary`.
   2) Confirm page content request is only `/api/v1/runs/<runId>/executive-summary`.
   3) Validate placeholder copy behavior for partial/missing section payloads.
+
+## 2026-02-20 19:02 GMT - Name Detail right drawer (~480px), collapsible evidence sections, and notes autosave/focus restore
+
+### Summary of changes
+- Rebuilt `NameDetailDrawer` as an overlay-only right sheet (`~480px`) with no route changes and immediate open from row data.
+- Added open-time detail query hydration using list-row `initialData`, then progressive detail fetch via `useNameCandidateDetailQuery(...)`.
+- Added drawer close + focus-return wiring:
+  - close via Sheet X / Escape / backdrop (Radix default)
+  - close transition callback (`onClose`) and return-focus callback/ref support (`onReturnFocus` / `returnFocusRef`)
+  - `onCloseAutoFocus` now restores focus to the opening row element.
+- Added multi-open accordion sections in drawer body:
+  - `Meaning & Story`
+  - `Scores` (fit/distinctiveness/whitespace/usability/extendability with raw/weight/weighted + total)
+  - `Fast Clearance`
+  - `Deep Clearance Evidence` (USPTO similar marks table, domain block, social platform rows + aggregate badge)
+  - `Notes`
+- Updated notes autosave behavior to meet spec:
+  - debounced autosave at 1500ms after typing stops
+  - immediate save on textarea blur
+  - optimistic TanStack mutation usage (existing onMutate rollback flow retained)
+  - save errors toast without destructive draft reset.
+- Updated names detail GET/PATCH API handling to consistently unwrap backend `{ item: ... }` envelopes and aligned mutation success cache merges with detail response shape.
+- Added keyboard-focusable table rows and keyboard open behavior (`Enter`/`Space`) so focus-restore workflow works for keyboard users.
+
+### Files changed/added
+- `frontend/src/features/names/components/NameDetailDrawer.tsx`
+- `frontend/src/features/names/components/NamesTable.tsx`
+- `frontend/src/routes/GenerationReviewPage.tsx`
+- `frontend/src/features/names/queries.ts`
+- `frontend/src/features/names/optimistic.ts`
+- `frontend/src/lib/api/names.ts`
+- `frontend/src/lib/api/names.types.ts`
+- `frontend/src/lib/api/index.ts`
+- `frontend/src/components/ui/accordion.tsx` (new)
+- `frontend/package.json`
+- `frontend/package-lock.json`
+
+### Notable implementation decisions
+- Focus restoration is parent-owned: `GenerationReviewPage` stores the last activated row element and passes a return-focus callback to `NameDetailDrawer`; drawer uses `SheetContent.onCloseAutoFocus` with `preventDefault()` to focus that target.
+- Detail fetch strategy is "instant then hydrate":
+  - `initialData` seeded from clicked list candidate for immediate render
+  - query enabled only while drawer is open
+  - detail cache reused on reopen to avoid empty flicker.
+- PATCH success cache handling now merges patched fields back into run-list caches and writes the full detail payload into detail cache, avoiding incorrect full-row replacement assumptions from detail responses.
+- Notes save queue is handled inside the drawer so blur/debounce saves do not conflict while a previous save is pending.
+
+### Manual test checklist results
+- Escape close: code path wired through Radix Sheet defaults; manual browser verification pending local run.
+- Backdrop close: code path wired through Radix Sheet defaults; manual browser verification pending local run.
+- Focus restore: implemented with `onCloseAutoFocus` + stored row element callback; local keyboard verification pending (`open row -> Escape -> row re-focused`).
+- Debounce + blur saves: implemented (1500ms debounce + immediate blur save); local network-panel verification pending.
+- Save failure toast + draft retention: implemented (destructive toast via `getErrorMessage`, local draft preserved); forced backend-failure browser verification pending.
+
+### Commands run
+- `cd frontend && npm install @radix-ui/react-accordion`
+- `cd frontend && npm run lint` (pass)
+- `cd frontend && npm run typecheck` (pass)
+- `cd frontend && npm run build` (pass)

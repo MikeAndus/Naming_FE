@@ -38,6 +38,7 @@ export type { NormalizedNameCandidateListQueryParams }
 export { namesKeys }
 
 export const runNamesQueryKey = namesKeys.runNames
+export const nameCandidateDetailQueryKey = namesKeys.detail
 export const nameCandidateQueryKey = namesKeys.detail
 
 export type UseRunNamesQueryOptions = Omit<
@@ -86,14 +87,14 @@ export function useRunNamesAllQuery(
   )
 }
 
-export type UseNameCandidateQueryOptions = Omit<
+export type UseNameCandidateDetailQueryOptions = Omit<
   UseQueryOptions<NameCandidateDetailResponse>,
   'queryKey' | 'queryFn'
 >
 
-export function useNameCandidateQuery(
+export function useNameCandidateDetailQuery(
   nameId: string | undefined,
-  options?: UseNameCandidateQueryOptions,
+  options?: UseNameCandidateDetailQueryOptions,
 ) {
   return useQuery({
     ...(options ?? {}),
@@ -110,6 +111,8 @@ export function useNameCandidateQuery(
     },
   })
 }
+
+export const useNameCandidateQuery = useNameCandidateDetailQuery
 
 export interface PatchNameCandidateVariables {
   nameId: string
@@ -200,7 +203,12 @@ export function usePatchNameCandidateMutation() {
       const runId = variables.runId ?? response.run_id
       mergePatchedCandidateAcrossRunCaches(queryClient, {
         runId,
-        candidate: response,
+        nameId: variables.nameId,
+        patch: {
+          shortlisted: response.shortlisted,
+          selected_for_clearance: response.selected_for_clearance,
+          notes: response.notes,
+        },
       })
       mergePatchedCandidateIntoNameDetailCache(queryClient, {
         nameId: variables.nameId,

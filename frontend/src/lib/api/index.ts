@@ -86,6 +86,7 @@ export type {
   NameCandidateDeepTrademarkDetailResponse,
   NameCandidateDeepUSPTOEvidenceRowResponse,
   NameCandidateDetailResponse,
+  NameCandidateFastClearanceDetailResponse,
   NameCandidateListQueryParams,
   NameCandidateListResponse,
   NameCandidatePatchEnvelope,

@@ -229,13 +229,9 @@ interface NameCandidatePatchFields {
 
 export type NameCandidatePatchRequest = RequireAtLeastOne<NameCandidatePatchFields>
 
-export type NameCandidatePatchResponse = NameCandidateResponse
-
 export interface DetailResponseEnvelope<TItem> {
   item: TItem
 }
-
-export type NameCandidatePatchEnvelope = DetailResponseEnvelope<NameCandidatePatchResponse>
 
 export interface NameCandidateScoreCriterionResponse {
   raw: number | null
@@ -308,9 +304,9 @@ export interface NameCandidateDeepSocialDetailResponse {
 }
 
 export interface NameCandidateDeepClearanceDetailResponse {
-  trademark: NameCandidateDeepTrademarkDetailResponse
-  domain: NameCandidateDeepDomainDetailResponse
-  socials: NameCandidateDeepSocialDetailResponse
+  trademark: NameCandidateDeepTrademarkDetailResponse | null
+  domain: NameCandidateDeepDomainDetailResponse | null
+  socials: NameCandidateDeepSocialDetailResponse | null
 }
 
 export interface NameCandidateDetailResponse {
@@ -333,5 +329,9 @@ export interface NameCandidateDetailResponse {
   territory_card_title: string | null
   scores: NameCandidateScoresDetailResponse
   fast_clearance: NameCandidateFastClearanceDetailResponse
-  deep_clearance: NameCandidateDeepClearanceDetailResponse
+  deep_clearance: NameCandidateDeepClearanceDetailResponse | null
 }
+
+export type NameCandidateDetailEnvelope = DetailResponseEnvelope<NameCandidateDetailResponse>
+export type NameCandidatePatchResponse = NameCandidateDetailResponse
+export type NameCandidatePatchEnvelope = DetailResponseEnvelope<NameCandidatePatchResponse>

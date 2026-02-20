@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -248,6 +248,7 @@ export function GenerationReviewPage() {
   const [filters, setFilters] = useState<NamesFilterState>(() => createDefaultNamesFilters())
   const [selectedNameId, setSelectedNameId] = useState<string | null>(null)
   const [isDeepClearanceDialogOpen, setIsDeepClearanceDialogOpen] = useState(false)
+  const lastDrawerTriggerRef = useRef<HTMLElement | null>(null)
   const patchNameCandidateMutation = usePatchNameCandidateMutation()
   const deepClearanceMutation = useRunDeepClearanceMutation()
   const debouncedSearch = useDebouncedValue(filters.search, 300)
@@ -637,7 +638,8 @@ export function GenerationReviewPage() {
           onClearFilters={() => {
             setFilters(createDefaultNamesFilters())
           }}
-          onRowClick={(candidate) => {
+          onRowClick={(candidate, triggerElement) => {
+            lastDrawerTriggerRef.current = triggerElement
             setSelectedNameId(candidate.id)
           }}
           onRetry={() => {
@@ -676,10 +678,16 @@ export function GenerationReviewPage() {
 
       <NameDetailDrawer
         candidate={selectedNameCandidate}
+        onClose={() => {
+          setSelectedNameId(null)
+        }}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setSelectedNameId(null)
           }
+        }}
+        onReturnFocus={() => {
+          lastDrawerTriggerRef.current?.focus()
         }}
         onToggleSelectedForClearance={handleToggleSelectedForClearance}
         onToggleShortlisted={handleToggleShortlisted}

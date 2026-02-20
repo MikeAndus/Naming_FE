@@ -19,7 +19,10 @@ interface NamesTableProps {
   hasActiveFilters: boolean
   onRetry: () => void
   onClearFilters: () => void
-  onRowClick?: (candidate: NameCandidateResponse) => void
+  onRowClick?: (
+    candidate: NameCandidateResponse,
+    triggerElement: HTMLTableRowElement,
+  ) => void
   onToggleShortlisted?: (candidate: NameCandidateResponse) => void
   onToggleSelectedForClearance?: (candidate: NameCandidateResponse) => void
 }
@@ -175,12 +178,27 @@ export function NamesTable({
             <tr
               className={cn(
                 'border-b align-top hover:bg-muted/30',
-                onRowClick ? 'cursor-pointer' : '',
+                onRowClick
+                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+                  : '',
               )}
               key={candidate.id}
-              onClick={() => {
-                onRowClick?.(candidate)
+              onClick={(event) => {
+                event.currentTarget.focus()
+                onRowClick?.(candidate, event.currentTarget)
               }}
+              onKeyDown={(event) => {
+                if (!onRowClick) {
+                  return
+                }
+
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  event.currentTarget.focus()
+                  onRowClick(candidate, event.currentTarget)
+                }
+              }}
+              tabIndex={onRowClick ? 0 : -1}
             >
               <td className="px-2 py-2 text-center">
                 <Button

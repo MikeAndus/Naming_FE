@@ -1,5 +1,6 @@
 import { request } from '@/lib/api/client'
 import {
+  type NameCandidateDetailEnvelope,
   normalizeNameCandidateListQueryParams,
   type NameCandidateDetailResponse,
   type NameCandidateListQueryParams,
@@ -69,9 +70,14 @@ export async function getRunNames(
 export const listRunNames = getRunNames
 
 export async function getNameCandidate(nameId: string): Promise<NameCandidateDetailResponse> {
-  return request<NameCandidateDetailResponse>(`/names/${encodeURIComponent(nameId)}`, {
-    method: 'GET',
-  })
+  const response = await request<NameCandidateDetailEnvelope>(
+    `/names/${encodeURIComponent(nameId)}`,
+    {
+      method: 'GET',
+    },
+  )
+
+  return response.item
 }
 
 export async function patchNameCandidate(
